@@ -739,6 +739,7 @@
     };
 
     function getTextDir(text) {
+      // Arabic/Persian/Urdu Unicode blocks for RTL detection.
       return /[؀-ۿݐ-ݿ]/.test(text) ? 'rtl' : 'ltr';
     }
 
@@ -777,6 +778,7 @@
 
     function healthScore(messages) {
       var len = (messages || []).reduce(function (acc, m) { return acc + String(m.content || '').length; }, 0);
+      // Weighted score: +5 per message and +1 per ~200 chars of total content.
       return Math.round((messages || []).length * 5 + (len / 200));
     }
 
