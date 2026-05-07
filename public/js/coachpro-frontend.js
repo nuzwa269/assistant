@@ -48,6 +48,7 @@
       case 'buy_credits':  renderBuyCredits(el, cfg); break;
       case 'settings':     renderSettings(el, cfg); break;
       case 'transactions': renderTransactions(el, cfg); break;
+      case 'help':         renderHelp(el, cfg); break;
       default:             el.innerHTML = '<p class="cp-error">Unknown view: ' + escHtml(cfg.view) + '</p>';
     }
   }
@@ -148,6 +149,7 @@
       { view: 'saved',       label: '🔖 Saved' },
       { view: 'buy_credits', label: '💳 Credits' },
       { view: 'settings',    label: '⚙ Settings' },
+      { view: 'help',        label: '❓ Help' },
     ];
     links.forEach(function (lnk) {
       var a = document.createElement('a');
@@ -158,6 +160,10 @@
         e.preventDefault();
         var parent = nav.closest('.coachpro-app');
         cfg.view = lnk.view;
+        if (cfg.pageUrls && cfg.pageUrls[lnk.view]) {
+          window.location.href = cfg.pageUrls[lnk.view];
+          return;
+        }
         renderView(parent, cfg);
       });
       nav.appendChild(a);
@@ -335,64 +341,213 @@
 
     var main = el('div', 'cp-main');
     el_container.appendChild(main);
+    main.innerHTML = '<div class="cp-loading">Loading dashboard…</div>';
 
-    api(cfg, 'auth/me').then(function (data) {
-      var user = data;
+    function parseStarters(assistant) {
+      if (!assistant || !assistant.conversation_starters) return [];
+      if (Array.isArray(assistant.conversation_starters)) return assistant.conversation_starters;
+      if (typeof assistant.conversation_starters === 'string') {
+        try { return JSON.parse(assistant.conversation_starters); } catch (e) { return []; }
+      }
+      return [];
+    }
+
+    function goToChat(projectId, convId, assistantId) {
+      cfg.projectId = projectId || '';
+      cfg.convId = convId || '';
+      cfg.assistantId = assistantId || '';
+
+      if (cfg.pageUrls && cfg.pageUrls.chat) {
+        window.location.href = cfg.pageUrls.chat;
+        return;
+      }
+
+      cfg.view = 'chat';
+      renderView(el_container, cfg);
+    }
+
+    Promise.all([
+      api(cfg, 'auth/me'),
+      api(cfg, 'projects?per_page=3&orderby=updated_at').catch(function () { return []; }),
+      api(cfg, 'assistants?active=1').catch(function () { return []; })
+    ]).then(function (results) {
+      var user = results[0] || {};
+      var projects = Array.isArray(results[1]) ? results[1] : [];
+      var assistantsRaw = Array.isArray(results[2]) ? results[2] : [];
+      var assistants = assistantsRaw.filter(function (a) {
+        return String(a.is_activated) === '1' || a.is_activated === true;
+      });
+      if (!assistants.length) assistants = assistantsRaw.slice(0, 6);
+      var selectedAssistant = assistants[0] || null;
+
       main.innerHTML = '';
+      main.appendChild(el('h2', 'cp-heading', '👋 Welcome, ' + escHtml(user.name || user.username || 'there') + '!'));
 
-      var heading = el('h2', 'cp-heading', '👋 Welcome, ' + escHtml(user.name || user.username) + '!');
-      main.appendChild(heading);
-
-      // Stats cards
-      var stats = el('div', 'cp-stats-grid');
-      var statItems = [
-        { label: 'Credits', value: user.credits, icon: '💰' },
-        { label: 'Plan',    value: (user.plan || 'free').toUpperCase(), icon: '🏅' },
-      ];
-      statItems.forEach(function (s) {
-        var card = el('div', 'cp-stat-card');
-        card.innerHTML = '<div class="cp-stat-icon">' + s.icon + '</div>' +
-          '<div class="cp-stat-value">' + escHtml(String(s.value)) + '</div>' +
-          '<div class="cp-stat-label">' + escHtml(s.label) + '</div>';
-        stats.appendChild(card);
-      });
-      main.appendChild(stats);
-
-      // Quick actions
-      var actions = el('div', 'cp-actions');
-      actions.innerHTML = '<h3>Quick Actions</h3>';
-      var actList = [
-        { label: '📁 My Projects',  view: 'projects' },
-        { label: '🤖 Assistants',   view: 'assistants' },
-        { label: '💳 Buy Credits',  view: 'buy_credits' },
-        { label: '⚙ Settings',     view: 'settings' },
-      ];
-      actList.forEach(function (a) {
-        var b = btn(a.label, 'cp-btn-outline');
-        b.addEventListener('click', function () {
-          cfg.view = a.view;
-          renderView(el_container, cfg);
+      if (Number(user.credits || 0) <= 5) {
+        var low = el('div', 'cp-low-credits-banner');
+        low.innerHTML = '<strong>Running low on credits</strong>';
+        var buyBtn = btn('Buy Credits', 'cp-btn-primary cp-btn-sm');
+        buyBtn.addEventListener('click', function () {
+          if (cfg.pageUrls && cfg.pageUrls.buy_credits) {
+            window.location.href = cfg.pageUrls.buy_credits;
+          } else {
+            cfg.view = 'buy_credits';
+            renderView(el_container, cfg);
+          }
         });
-        actions.appendChild(b);
-      });
-      main.appendChild(actions);
+        low.appendChild(buyBtn);
+        main.appendChild(low);
+      }
 
-      // Recent conversations
-      api(cfg, 'conversations?per_page=5').then(function (convs) {
-        if (!Array.isArray(convs) || !convs.length) return;
-        var section = el('div', 'cp-section');
-        section.innerHTML = '<h3>Recent Conversations</h3>';
-        var list = el('ul', 'cp-list');
-        convs.slice(0, 5).forEach(function (c) {
-          var li = el('li', 'cp-list-item', escHtml(c.title));
-          list.appendChild(li);
+      var plan = String(user.plan || 'free').toLowerCase();
+      var proDismissed = false;
+      try { proDismissed = window.localStorage.getItem('coachpro_pro_banner_dismissed') === '1'; } catch (e) {}
+      if (plan === 'free' && !proDismissed) {
+        var pro = el('div', 'cp-pro-banner');
+        pro.innerHTML = '<strong>Upgrade to Pro</strong> for more credits, assistants, and unlimited usage.';
+        var wrap = el('div', '');
+        var upBtn = btn('Upgrade', 'cp-btn-primary cp-btn-sm');
+        var closeBtn = btn('Dismiss', 'cp-btn-outline cp-btn-sm');
+        upBtn.addEventListener('click', function () {
+          if (cfg.pageUrls && cfg.pageUrls.buy_credits) {
+            window.location.href = cfg.pageUrls.buy_credits;
+          } else {
+            cfg.view = 'buy_credits';
+            renderView(el_container, cfg);
+          }
         });
-        section.appendChild(list);
-        main.appendChild(section);
-      }).catch(function () {});
+        closeBtn.addEventListener('click', function () {
+          try { window.localStorage.setItem('coachpro_pro_banner_dismissed', '1'); } catch (e) {}
+          pro.remove();
+        });
+        wrap.appendChild(upBtn);
+        wrap.appendChild(closeBtn);
+        pro.appendChild(wrap);
+        main.appendChild(pro);
+      }
+
+      var chipsWrap = el('div', 'cp-assistant-chips');
+      chipsWrap.innerHTML = '<h3>Active Assistants</h3>';
+      if (!assistants.length) {
+        chipsWrap.appendChild(el('p', 'cp-empty', 'No active assistants. Activate one to start.'));
+      }
+      assistants.forEach(function (a, idx) {
+        var c = btn('🤖 ' + (a.name || 'Assistant'), 'cp-btn-outline cp-btn-sm' + (idx === 0 ? ' active' : ''));
+        c.addEventListener('click', function () {
+          selectedAssistant = a;
+          chipsWrap.querySelectorAll('.cp-btn').forEach(function (node) { node.classList.remove('active'); });
+          c.classList.add('active');
+          renderStarters();
+        });
+        chipsWrap.appendChild(c);
+      });
+      main.appendChild(chipsWrap);
+
+      var quick = el('div', 'cp-card');
+      quick.innerHTML = '<h3>⚡ Quick Chat</h3><p>Send a message and jump straight into chat.</p>';
+      var quickInput = textarea('Type your message…');
+      quickInput.rows = 3;
+      var quickSend = btn('Send ➤', 'cp-btn-primary');
+      var starters = el('div', 'cp-starter-chips');
+
+      function renderStarters() {
+        starters.innerHTML = '';
+        parseStarters(selectedAssistant).forEach(function (s) {
+          var t = typeof s === 'string' ? s : (s && (s.title || s.label || s.text)) || '';
+          if (!t) return;
+          var sb = btn(t, 'cp-btn-outline cp-btn-sm');
+          sb.addEventListener('click', function () {
+            quickInput.value = t;
+            quickInput.focus();
+          });
+          starters.appendChild(sb);
+        });
+      }
+
+      quickSend.addEventListener('click', function () {
+        var text = quickInput.value.trim();
+        if (!text) return;
+        if (!selectedAssistant) {
+          alert('Please activate an assistant first.');
+          return;
+        }
+
+        quickSend.disabled = true;
+        quickSend.textContent = 'Starting…';
+
+        var ensureProject = Promise.resolve((cfg.projectId || (projects[0] && projects[0].id) || ''));
+        if (!projects.length && !cfg.projectId) {
+          ensureProject = api(cfg, 'projects', 'POST', { name: 'Quick Chat', description: 'Auto-created for quick dashboard chat' })
+            .then(function (p) { return p.id; });
+        }
+
+        ensureProject.then(function (projectId) {
+          return api(cfg, 'conversations', 'POST', {
+            project_id: projectId,
+            assistant_id: selectedAssistant.id,
+            title: 'New conversation'
+          }).then(function (conv) {
+            return api(cfg, 'conversations/' + conv.id + '/messages', 'POST', {
+              role: 'user',
+              content: text
+            }).then(function () {
+              goToChat(projectId, conv.id, selectedAssistant.id);
+            });
+          });
+        }).catch(function (e) {
+          showError(quick, (e && e.message) || 'Unable to start quick chat.');
+          quickSend.disabled = false;
+          quickSend.textContent = 'Send ➤';
+        });
+      });
+
+      quick.appendChild(quickInput);
+      quick.appendChild(starters);
+      quick.appendChild(quickSend);
+      main.appendChild(quick);
+      renderStarters();
+
+      var pSection = el('div', 'cp-section');
+      pSection.innerHTML = '<h3>Recent Projects</h3>';
+      var pGrid = el('div', 'cp-cards-grid');
+      projects.slice(0, 3).forEach(function (p) {
+        var card = el('div', 'cp-card cp-project-card');
+        card.innerHTML = '<h4>' + escHtml(p.name || 'Untitled') + '</h4><p>' + escHtml(p.description || '') + '</p>';
+        var chatBtn = btn('Open Chat', 'cp-btn-outline cp-btn-sm');
+        chatBtn.addEventListener('click', function () {
+          goToChat(p.id, '', selectedAssistant && selectedAssistant.id);
+        });
+        card.appendChild(chatBtn);
+        pGrid.appendChild(card);
+      });
+      if (!projects.length) pGrid.appendChild(el('p', 'cp-empty', 'No projects yet.'));
+      pSection.appendChild(pGrid);
+      main.appendChild(pSection);
+
+      var aSection = el('div', 'cp-section');
+      aSection.innerHTML = '<h3>Recent Assistants</h3>';
+      var aGrid = el('div', 'cp-cards-grid');
+      assistants.slice(0, 3).forEach(function (a) {
+        var card = el('div', 'cp-card cp-project-card');
+        card.innerHTML = '<h4>' + escHtml(a.name || 'Assistant') + '</h4><p>' + escHtml(a.description || '') + '</p>';
+        card.addEventListener('click', function () {
+          selectedAssistant = a;
+          chipsWrap.querySelectorAll('.cp-btn').forEach(function (node) {
+            if (node.textContent.indexOf(a.name) !== -1) node.classList.add('active');
+            else node.classList.remove('active');
+          });
+          renderStarters();
+          quickInput.focus();
+        });
+        aGrid.appendChild(card);
+      });
+      if (!assistants.length) aGrid.appendChild(el('p', 'cp-empty', 'No assistants available.'));
+      aSection.appendChild(aGrid);
+      main.appendChild(aSection);
 
     }).catch(function (err) {
-      showError(main, (err && err.message) || 'Failed to load profile.');
+      main.innerHTML = '';
+      showError(main, (err && err.message) || 'Failed to load dashboard.');
     });
   }
 
@@ -567,108 +722,369 @@
     el_container.innerHTML = '';
     el_container.appendChild(navBar(cfg, 'chat'));
 
-    var main = el('div', 'cp-main cp-chat-layout');
+    var main = el('div', 'cp-main');
     el_container.appendChild(main);
 
-    var state = { convId: null, messages: [], modelId: null, assistantId: null, projectId: cfg.projectId || null };
+    var state = {
+      projectId: cfg.projectId || '',
+      convId: cfg.convId || '',
+      assistantId: cfg.assistantId || '',
+      modelId: 'gpt-4o-mini',
+      credits: 0,
+      projects: [],
+      assistants: [],
+      conversations: [],
+      messages: [],
+      savedMap: {}
+    };
 
-    // Sidebar: project + assistant + model selectors
-    var sidebar = el('div', 'cp-chat-sidebar');
-    var chatArea = el('div', 'cp-chat-area');
-    main.appendChild(sidebar);
-    main.appendChild(chatArea);
+    function getTextDir(text) {
+      return /[؀-ۿݐ-ݿ]/.test(text) ? 'rtl' : 'ltr';
+    }
 
-    // Load projects for selector
-    Promise.all([
-      api(cfg, 'projects'),
-      api(cfg, 'assistants'),
-      api(cfg, 'conversations'),
-    ]).then(function (results) {
-      var projects    = results[0] || [];
-      var assistants  = (results[1] || []).filter(function (a) { return String(a.is_activated) === '1' || a.is_activated === true; });
-      var convs       = results[2] || [];
-
-      sidebar.innerHTML = '<h3>💬 Chat</h3>';
-
-      // Project select
-      if (projects.length) {
-        var projOpts = projects.map(function (p) { return { value: p.id, label: p.name }; });
-        projOpts.unshift({ value: '', label: '— Select Project —' });
-        var projSel = select(projOpts, state.projectId || '');
-        projSel.addEventListener('change', function () { state.projectId = this.value; loadConversations(); });
-        sidebar.appendChild(el('label', 'cp-label', 'Project'));
-        sidebar.appendChild(projSel);
+    function parseStarters(assistant) {
+      if (!assistant || !assistant.conversation_starters) return [];
+      if (Array.isArray(assistant.conversation_starters)) return assistant.conversation_starters;
+      if (typeof assistant.conversation_starters === 'string') {
+        try { return JSON.parse(assistant.conversation_starters); } catch (e) { return []; }
       }
+      return [];
+    }
 
-      // Assistant select
-      var asstOpts = assistants.map(function (a) { return { value: a.id, label: a.name }; });
-      asstOpts.unshift({ value: '', label: '— Select Assistant —' });
-      var asstSel = select(asstOpts, '');
-      asstSel.addEventListener('change', function () { state.assistantId = this.value; });
-      sidebar.appendChild(el('label', 'cp-label', 'Assistant'));
-      sidebar.appendChild(asstSel);
+    function goTo(view, extra) {
+      if (extra) {
+        Object.keys(extra).forEach(function (k) { cfg[k] = extra[k]; });
+      }
+      if (cfg.pageUrls && cfg.pageUrls[view]) {
+        window.location.href = cfg.pageUrls[view];
+        return;
+      }
+      cfg.view = view;
+      renderView(el_container, cfg);
+    }
 
-      // New conversation button
-      var newConvBtn = btn('+ New Chat', 'cp-btn-primary cp-full');
-      newConvBtn.addEventListener('click', function () {
-        if (!state.projectId || !state.assistantId) {
-          alert('Please select a project and assistant first.');
-          return;
-        }
-        api(cfg, 'conversations', 'POST', {
-          project_id:   state.projectId,
-          assistant_id: state.assistantId,
-          title:        'New conversation',
-        }).then(function (conv) {
-          state.convId   = conv.id;
-          state.messages = [];
-          renderChatMessages(chatArea, cfg, state);
-          loadConversations();
+    function selectedAssistant() {
+      return state.assistants.find(function (a) { return a.id === state.assistantId; }) || null;
+    }
+
+    function selectedProject() {
+      return state.projects.find(function (p) { return p.id === state.projectId; }) || null;
+    }
+
+    function selectedConversation() {
+      return state.conversations.find(function (c) { return c.id === state.convId; }) || null;
+    }
+
+    function healthScore(messages) {
+      var len = (messages || []).reduce(function (acc, m) { return acc + String(m.content || '').length; }, 0);
+      return Math.round((messages || []).length * 5 + (len / 200));
+    }
+
+    function syncModelFromAssistant() {
+      var a = selectedAssistant();
+      state.modelId = (a && a.default_model_id) || 'gpt-4o-mini';
+    }
+
+    function refreshSavedMap() {
+      return api(cfg, 'saved-responses').then(function (rows) {
+        state.savedMap = {};
+        (rows || []).forEach(function (r) { state.savedMap[r.message_id] = r.id; });
+      }).catch(function () { state.savedMap = {}; });
+    }
+
+    function loadConversations() {
+      if (!state.projectId) {
+        state.conversations = [];
+        state.convId = '';
+        state.messages = [];
+        render();
+        return Promise.resolve();
+      }
+      return api(cfg, 'conversations?project_id=' + encodeURIComponent(state.projectId)).then(function (rows) {
+        state.conversations = rows || [];
+        if (!state.convId && state.conversations.length) state.convId = state.conversations[0].id;
+      });
+    }
+
+    function loadMessages() {
+      if (!state.convId) {
+        state.messages = [];
+        render();
+        return Promise.resolve();
+      }
+      return api(cfg, 'conversations/' + state.convId + '/messages').then(function (rows) {
+        state.messages = rows || [];
+      });
+    }
+
+    function createConversation(title) {
+      if (!state.projectId || !state.assistantId) {
+        alert('Please select a project and assistant first.');
+        return Promise.resolve(null);
+      }
+      return api(cfg, 'conversations', 'POST', {
+        project_id: state.projectId,
+        assistant_id: state.assistantId,
+        title: title || 'New conversation'
+      }).then(function (conv) {
+        state.convId = conv.id;
+        state.messages = [];
+        return loadConversations().then(function () { return loadMessages(); }).then(function () { return conv; });
+      });
+    }
+
+    function showTooLongDialog() {
+      var modal = el('div', 'cp-modal');
+      var card = el('div', 'cp-card');
+      card.innerHTML = '<h3>This chat has grown very long</h3><p>Start a fresh chat for better responses.</p>';
+      var freshBtn = btn('Start Fresh Chat', 'cp-btn-primary');
+      var closeBtn = btn('Close', 'cp-btn-outline');
+      freshBtn.addEventListener('click', function () {
+        createConversation('New conversation').then(function () {
+          modal.remove();
+          render();
         });
       });
-      sidebar.appendChild(newConvBtn);
+      closeBtn.addEventListener('click', function () { modal.remove(); });
+      card.appendChild(freshBtn);
+      card.appendChild(closeBtn);
+      modal.appendChild(card);
+      main.appendChild(modal);
+    }
 
-      // Conversations list
+    function render() {
+      var project = selectedProject();
+      var assistant = selectedAssistant();
+      var conv = selectedConversation();
+      syncModelFromAssistant();
+
+      main.innerHTML = '';
+
+      var top = el('div', 'cp-section-header');
+      top.innerHTML = '<div><a href="#" class="cp-link cp-back-projects">← Projects</a> &nbsp; <a href="#" class="cp-link cp-back-dashboard">← Dashboard</a></div>' +
+        '<div><strong>📁 ' + escHtml((project && project.name) || 'No project') + '</strong></div>' +
+        '<div><strong>💳 Credits: ' + escHtml(String(state.credits || 0)) + '</strong></div>';
+      main.appendChild(top);
+      top.querySelector('.cp-back-projects').addEventListener('click', function (e) { e.preventDefault(); goTo('projects'); });
+      top.querySelector('.cp-back-dashboard').addEventListener('click', function (e) { e.preventDefault(); goTo('dashboard'); });
+
+      var menuBtn = btn('☰', 'cp-btn cp-chat-menu-btn');
+      main.appendChild(menuBtn);
+
+      var layout = el('div', 'cp-chat-layout');
+      var sidebar = el('aside', 'cp-chat-sidebar');
+      var area = el('section', 'cp-chat-area');
+      var right = el('aside', 'cp-chat-right');
+      layout.appendChild(sidebar);
+      layout.appendChild(area);
+      layout.appendChild(right);
+      main.appendChild(layout);
+
+      menuBtn.addEventListener('click', function () { sidebar.classList.toggle('cp-sidebar-open'); });
+
+      sidebar.appendChild(el('h3', '', escHtml((project && project.name) || 'Project')));
+      sidebar.appendChild(el('p', '', escHtml((project && project.description) || 'Select a project to begin.')));
+
+      var projectSel = select(state.projects.map(function (p) { return { value: p.id, label: p.name }; }), state.projectId || '');
+      projectSel.addEventListener('change', function () {
+        state.projectId = this.value;
+        state.convId = '';
+        loadConversations().then(loadMessages).then(render);
+      });
+      sidebar.appendChild(el('label', 'cp-label', 'Project'));
+      sidebar.appendChild(projectSel);
+
+      var assistantSel = select(state.assistants.map(function (a) { return { value: a.id, label: a.name }; }), state.assistantId || '');
+      assistantSel.addEventListener('change', function () {
+        state.assistantId = this.value;
+        syncModelFromAssistant();
+        render();
+      });
+      sidebar.appendChild(el('label', 'cp-label', 'Select Assistant'));
+      sidebar.appendChild(assistantSel);
+
+      var newBtn = btn('+ New Chat', 'cp-btn-primary cp-full');
+      newBtn.addEventListener('click', function () {
+        createConversation('New conversation').then(render);
+      });
+      sidebar.appendChild(newBtn);
+
+      sidebar.appendChild(el('h4', '', 'Conversations'));
       var convList = el('div', 'cp-conv-list');
+      (state.conversations || []).forEach(function (c) {
+        var row = el('div', 'cp-conv-row');
+        var item = el('div', 'cp-conv-item' + (c.id === state.convId ? ' active' : ''), escHtml(c.title || 'Untitled'));
+        item.addEventListener('click', function () {
+          state.convId = c.id;
+          state.assistantId = c.assistant_id || state.assistantId;
+          loadMessages().then(render);
+        });
+        var del = btn('🗑', 'cp-btn-danger cp-btn-sm');
+        del.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (!confirm('Delete this conversation?')) return;
+          api(cfg, 'conversations/' + c.id, 'DELETE').then(function () {
+            if (state.convId === c.id) {
+              state.convId = '';
+              state.messages = [];
+            }
+            return loadConversations();
+          }).then(render);
+        });
+        row.appendChild(item);
+        row.appendChild(del);
+        convList.appendChild(row);
+      });
       sidebar.appendChild(convList);
 
-      function loadConversations() {
-        var path = 'conversations';
-        if (state.projectId) path += '?project_id=' + encodeURIComponent(state.projectId);
-        api(cfg, path).then(function (list) {
-          convList.innerHTML = '';
-          (list || []).forEach(function (c) {
-            var item = el('div', 'cp-conv-item' + (c.id === state.convId ? ' active' : ''), escHtml(c.title || 'Untitled'));
-            item.addEventListener('click', function () {
-              state.convId = c.id;
-              api(cfg, 'conversations/' + c.id + '/messages').then(function (msgs) {
-                state.messages = msgs || [];
-                renderChatMessages(chatArea, cfg, state);
-                document.querySelectorAll('.cp-conv-item').forEach(function (el) { el.classList.remove('active'); });
-                item.classList.add('active');
-              });
+      var header = el('div', 'cp-card');
+      var score = healthScore(state.messages || []);
+      var healthClass = score < 20 ? 'healthy' : (score < 50 ? 'long' : 'very-long');
+      var healthText = score < 20 ? '🟢 Healthy' : (score < 50 ? '🟡 Getting long' : '🔴 Very long');
+      header.innerHTML = '<h3>🤖 ' + escHtml((assistant && assistant.name) || 'Assistant') + '</h3>' +
+        '<p>' + escHtml((conv && conv.title) || 'New conversation') + '</p>' +
+        '<div class="cp-health-badge ' + healthClass + '">' + healthText + '</div>';
+      if (score >= 50) {
+        var fresh = btn('Start Fresh', 'cp-btn-outline cp-btn-sm');
+        fresh.addEventListener('click', function () {
+          createConversation('New conversation').then(render);
+        });
+        header.appendChild(fresh);
+      }
+      area.appendChild(header);
+
+      var msgList = el('div', 'cp-msg-list');
+      if (!state.messages.length && assistant) {
+        var starters = el('div', 'cp-starter-chips');
+        parseStarters(assistant).forEach(function (s) {
+          var t = typeof s === 'string' ? s : (s && (s.title || s.label || s.text)) || '';
+          if (!t) return;
+          var sb = btn(t, 'cp-btn-outline cp-btn-sm');
+          sb.addEventListener('click', function () {
+            inputBox.value = t;
+            inputBox.focus();
+          });
+          starters.appendChild(sb);
+        });
+        if (starters.children.length) area.appendChild(starters);
+      }
+
+      (state.messages || []).forEach(function (m) {
+        var bubble = el('div', 'cp-msg cp-msg-' + escHtml(m.role));
+        var content = el('div', 'cp-msg-content', escHtml(m.content || ''));
+        content.setAttribute('dir', getTextDir(m.content || ''));
+        bubble.appendChild(content);
+        bubble.appendChild(el('div', 'cp-msg-meta', escHtml(m.role || '')));
+
+        if (m.role === 'assistant' && m.id) {
+          var savedId = state.savedMap[m.id];
+          var saveBtn = btn(savedId ? '✅ Saved' : '🔖 Save', 'cp-btn-outline cp-btn-sm');
+          saveBtn.addEventListener('click', function () {
+            if (savedId) {
+              api(cfg, 'saved-responses/' + savedId, 'DELETE').then(function () { return refreshSavedMap(); }).then(render);
+            } else {
+              api(cfg, 'saved-responses', 'POST', { message_id: m.id }).then(function () { return refreshSavedMap(); }).then(render);
+            }
+          });
+          bubble.appendChild(saveBtn);
+        }
+
+        msgList.appendChild(bubble);
+      });
+      area.appendChild(msgList);
+
+      var inputArea = el('div', 'cp-chat-input-area');
+      var inputBox = textarea('Type your message…');
+      inputBox.rows = 3;
+      var sendBtn = btn('Send ➤', 'cp-btn-primary');
+      inputArea.appendChild(inputBox);
+      inputArea.appendChild(sendBtn);
+      area.appendChild(inputArea);
+
+      function handleSend() {
+        var text = inputBox.value.trim();
+        if (!text) return;
+
+        var ensure = state.convId ? Promise.resolve({ id: state.convId }) : createConversation('New conversation');
+        ensure.then(function (convRow) {
+          if (!convRow || !convRow.id) return;
+          var isFirst = !(state.messages || []).some(function (m) { return m.role === 'user'; });
+
+          sendBtn.disabled = true;
+          sendBtn.textContent = 'Sending…';
+
+          return api(cfg, 'conversations/' + convRow.id + '/messages', 'POST', {
+            role: 'user',
+            content: text
+          }).then(function () {
+            if (isFirst) {
+              return api(cfg, 'conversations/' + convRow.id, 'PUT', { title: text.slice(0, 50) });
+            }
+            return null;
+          }).catch(function () {
+            return null;
+          }).then(function () {
+            return api(cfg, 'chat', 'POST', {
+              conversation_id: convRow.id,
+              model_id: state.modelId || 'gpt-4o-mini',
+              message: text
             });
-            convList.appendChild(item);
+          }).then(function (resp) {
+            state.credits = Number(resp.balance || (state.credits - Number(resp.credits_used || 0)) || 0);
+            inputBox.value = '';
+            return loadConversations().then(loadMessages).then(refreshSavedMap).then(render);
+          }).catch(function (e) {
+            if (e && e.code === 'chat_too_long') {
+              showTooLongDialog();
+            } else {
+              alert((e && e.message) || 'Failed to send message.');
+            }
+          }).finally(function () {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send ➤';
           });
         });
       }
 
-      // Load active assistant's model
-      api(cfg, 'auth/me').then(function (u) {
-        state.userId = u.id;
-        state.credits = u.credits;
-      }).catch(function () {});
-
-      // Default model
-      api(cfg, 'admin/models').then(function (models) {
-        if (models && models.length) state.modelId = models[0].id;
-      }).catch(function () {
-        // Fallback — try public endpoint is not available, use default
-        state.modelId = 'gpt-4o-mini';
+      sendBtn.addEventListener('click', handleSend);
+      inputBox.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
       });
 
-      loadConversations();
-      chatArea.innerHTML = '<p class="cp-empty">Select a conversation or create a new one.</p>';
+      right.innerHTML = '<div class="cp-card"><h4>Assistant</h4>' +
+        '<p><strong>Name:</strong> ' + escHtml((assistant && assistant.name) || '—') + '</p>' +
+        '<p><strong>Description:</strong> ' + escHtml((assistant && assistant.description) || '—') + '</p>' +
+        '<p><strong>Category:</strong> ' + escHtml((assistant && assistant.category) || '—') + '</p></div>';
+    }
+
+    Promise.all([
+      api(cfg, 'auth/me'),
+      api(cfg, 'projects'),
+      api(cfg, 'assistants?active=1').catch(function () { return api(cfg, 'assistants'); }),
+      refreshSavedMap()
+    ]).then(function (results) {
+      var user = results[0] || {};
+      state.credits = Number(user.credits || 0);
+      state.projects = results[1] || [];
+      state.assistants = (results[2] || []).filter(function (a) {
+        return String(a.is_activated) === '1' || a.is_activated === true;
+      });
+      if (!state.assistants.length) state.assistants = results[2] || [];
+
+      if (!state.projectId && state.projects.length) state.projectId = state.projects[0].id;
+      if (!state.assistantId && state.assistants.length) state.assistantId = state.assistants[0].id;
+      syncModelFromAssistant();
+
+      loadConversations().then(loadMessages).then(render).catch(function (e) {
+        main.innerHTML = '';
+        showError(main, (e && e.message) || 'Failed to load chat.');
+      });
+    }).catch(function (e) {
+      main.innerHTML = '';
+      showError(main, (e && e.message) || 'Failed to load chat.');
     });
   }
 
@@ -982,6 +1398,74 @@
     }).catch(function (e) {
       showError(main, (e && e.message) || 'Failed to load profile.');
     });
+  }
+
+
+  /* -----------------------------------------------------------------------
+   * View: Help
+   * --------------------------------------------------------------------- */
+  function renderHelp(el_container, cfg) {
+    el_container.innerHTML = '';
+    el_container.appendChild(navBar(cfg, 'help'));
+
+    var main = el('div', 'cp-main');
+    el_container.appendChild(main);
+
+    var faqs = [
+      { q: 'How do I start?', a: 'Pick an assistant from the Assistants page, activate it, then open Dashboard or Chat.' },
+      { q: 'How do conversation starters work?', a: 'When available, click a starter chip to fill your message quickly.' },
+      { q: 'Can I create my own assistant?', a: 'Yes. Go to Assistants and use “Create Assistant”. Free plans have limits.' },
+      { q: 'Why did my chat stop?', a: 'Your credits may be low, or the chat may be too long. Start a fresh chat when needed.' },
+      { q: 'How do I save a response?', a: 'In chat, click 🔖 on an assistant message. It appears in the Saved section.' },
+      { q: 'Where do I buy credits?', a: 'Open the Credits page from navigation to buy a plan or credit pack.' }
+    ];
+
+    main.innerHTML = '<div class="cp-card"><h2>How to use AI Assistants</h2><p>Follow these steps to get the best results.</p></div>';
+
+    var steps = [
+      'Pick assistant',
+      'Activate assistant',
+      'Start chatting',
+      'Use Conversation Starters',
+      'Create custom assistant',
+      'Manage credits'
+    ];
+    var stepsGrid = el('div', 'cp-cards-grid');
+    steps.forEach(function (s, i) {
+      stepsGrid.appendChild(el('div', 'cp-card cp-help-step', '<strong>Step ' + (i + 1) + ':</strong> ' + escHtml(s)));
+    });
+    main.appendChild(stepsGrid);
+
+    main.appendChild(el('div', 'cp-card', '<h3>💡 Pro Tip</h3><p>Keep each chat focused on one goal and start fresh when it becomes too long.</p>'));
+
+    var faqWrap = el('div', 'cp-card');
+    faqWrap.innerHTML = '<h3>FAQ</h3>';
+    faqs.forEach(function (f) {
+      var item = el('div', 'cp-faq-item');
+      var q = document.createElement('button');
+      q.className = 'cp-btn cp-btn-outline cp-full';
+      q.textContent = '❓ ' + f.q;
+      var a = el('div', 'cp-hidden', '<p>' + escHtml(f.a) + '</p>');
+      q.addEventListener('click', function () { a.classList.toggle('cp-hidden'); });
+      item.appendChild(q);
+      item.appendChild(a);
+      faqWrap.appendChild(item);
+    });
+    main.appendChild(faqWrap);
+
+    var cta = el('div', 'cp-card cp-center');
+    cta.innerHTML = '<h3>Ready to continue?</h3><p>Go to Dashboard and start your next conversation.</p>';
+    var ctaBtn = btn('Go to Dashboard', 'cp-btn-primary');
+    ctaBtn.addEventListener('click', function () {
+      if (cfg.pageUrls && cfg.pageUrls.dashboard) {
+        window.location.href = cfg.pageUrls.dashboard;
+      } else {
+        cfg.view = 'dashboard';
+        renderView(el_container, cfg);
+      }
+    });
+    cta.appendChild(ctaBtn);
+    main.appendChild(cta);
   }
 
   /* -----------------------------------------------------------------------
