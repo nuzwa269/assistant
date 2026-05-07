@@ -1,0 +1,557 @@
+/**
+ * CoachPro AI Assistant — Frontend Styles
+ * Scoped to .coachpro-app to prevent conflicts with WordPress themes.
+ *
+ * @package CoachPro_AI_Assistant
+ * @version 1.0.0
+ */
+
+/* ============================================================
+   CSS Custom Properties (theme tokens)
+   ============================================================ */
+.coachpro-app {
+  --cp-bg:         #f9fafb;
+  --cp-surface:    #ffffff;
+  --cp-border:     #e5e7eb;
+  --cp-text:       #111827;
+  --cp-muted:      #6b7280;
+  --cp-primary:    #6366f1;
+  --cp-primary-h:  #4f46e5;
+  --cp-danger:     #ef4444;
+  --cp-success:    #10b981;
+  --cp-warning:    #f59e0b;
+  --cp-radius:     8px;
+  --cp-shadow:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --cp-shadow-lg:  0 4px 16px rgba(0,0,0,.12);
+  --cp-font:       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cp-nav-bg:     #1e1b4b;
+  --cp-nav-text:   #e0e7ff;
+  --cp-nav-active: #6366f1;
+
+  font-family: var(--cp-font);
+  color: var(--cp-text);
+  background: var(--cp-bg);
+  min-height: 400px;
+  box-sizing: border-box;
+}
+
+/* Dark theme */
+.coachpro-app[data-theme="dark"] {
+  --cp-bg:      #0f0f0f;
+  --cp-surface: #1a1a1a;
+  --cp-border:  #2d2d2d;
+  --cp-text:    #f3f4f6;
+  --cp-muted:   #9ca3af;
+  --cp-nav-bg:  #111111;
+}
+
+/* ============================================================
+   Reset — scoped
+   ============================================================ */
+.coachpro-app *,
+.coachpro-app *::before,
+.coachpro-app *::after {
+  box-sizing: border-box;
+}
+
+.coachpro-app h1, .coachpro-app h2, .coachpro-app h3,
+.coachpro-app h4, .coachpro-app h5, .coachpro-app h6 {
+  margin: 0 0 .5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.coachpro-app p { margin: 0 0 .75em; }
+.coachpro-app ul { list-style: none; padding: 0; margin: 0; }
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.coachpro-app {
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  background: var(--cp-nav-bg);
+  padding: 8px 16px;
+  border-radius: var(--cp-radius) var(--cp-radius) 0 0;
+}
+
+.cp-nav-link {
+  color: var(--cp-nav-text);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: .875rem;
+  font-weight: 500;
+  transition: background .15s;
+}
+
+.cp-nav-link:hover,
+.cp-nav-link.active {
+  background: var(--cp-nav-active);
+  color: #fff;
+}
+
+.cp-nav-logout { margin-left: auto; opacity: .7; }
+.cp-nav-logout:hover { opacity: 1; background: var(--cp-danger) !important; }
+
+.cp-main {
+  flex: 1;
+  padding: 24px;
+  background: var(--cp-bg);
+}
+
+/* Chat layout */
+.cp-chat-layout {
+  display: flex;
+  gap: 0;
+  min-height: 500px;
+  padding: 0;
+}
+
+.cp-chat-sidebar {
+  width: 260px;
+  min-width: 200px;
+  background: var(--cp-surface);
+  border-right: 1px solid var(--cp-border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.cp-chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--cp-bg);
+  overflow: hidden;
+}
+
+.cp-msg-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 420px;
+}
+
+.cp-chat-input-area {
+  border-top: 1px solid var(--cp-border);
+  padding: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  background: var(--cp-surface);
+}
+
+.cp-chat-input-area .cp-textarea {
+  flex: 1;
+  margin: 0;
+}
+
+/* ============================================================
+   Cards & containers
+   ============================================================ */
+.cp-card {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--cp-shadow);
+}
+
+.cp-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.cp-plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.cp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cp-section-header h2 { margin: 0; }
+
+/* ============================================================
+   Auth form
+   ============================================================ */
+.cp-auth-form {
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+.cp-center { text-align: center; }
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.cp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--cp-radius);
+  font-size: .875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--cp-border);
+  color: var(--cp-text);
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+
+.cp-btn:hover { background: #d1d5db; }
+.cp-btn:active { transform: scale(.97); }
+.cp-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.cp-btn-primary {
+  background: var(--cp-primary);
+  color: #fff;
+  border-color: transparent;
+}
+.cp-btn-primary:hover { background: var(--cp-primary-h); }
+
+.cp-btn-outline {
+  background: transparent;
+  border-color: var(--cp-primary);
+  color: var(--cp-primary);
+}
+.cp-btn-outline:hover { background: var(--cp-primary); color: #fff; }
+
+.cp-btn-danger { background: var(--cp-danger); color: #fff; border-color: transparent; }
+.cp-btn-danger:hover { background: #dc2626; }
+
+.cp-btn-sm { padding: 4px 10px; font-size: .8rem; }
+.cp-full { width: 100%; display: flex; }
+
+/* ============================================================
+   Form elements
+   ============================================================ */
+.cp-input,
+.cp-textarea,
+.cp-select {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  font-size: .9rem;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  margin-bottom: 12px;
+  transition: border-color .15s;
+  font-family: inherit;
+}
+
+.cp-input:focus,
+.cp-textarea:focus,
+.cp-select:focus {
+  outline: none;
+  border-color: var(--cp-primary);
+  box-shadow: 0 0 0 2px rgba(99,102,241,.2);
+}
+
+.cp-textarea { resize: vertical; min-height: 80px; }
+.cp-label { display: block; font-size: .85rem; font-weight: 500; margin-bottom: 4px; color: var(--cp-muted); }
+
+/* ============================================================
+   Status messages
+   ============================================================ */
+.cp-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: var(--cp-radius);
+  font-size: .875rem;
+  margin-bottom: 12px;
+}
+
+.cp-success {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #047857;
+  padding: 10px 14px;
+  border-radius: var(--cp-radius);
+  font-size: .875rem;
+  margin-bottom: 12px;
+}
+
+.cp-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--cp-muted);
+}
+
+.cp-empty {
+  text-align: center;
+  padding: 32px;
+  color: var(--cp-muted);
+  font-style: italic;
+}
+
+.cp-hidden { display: none !important; }
+
+/* ============================================================
+   Stats
+   ============================================================ */
+.cp-stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.cp-stat-card {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 20px 28px;
+  text-align: center;
+  min-width: 140px;
+  box-shadow: var(--cp-shadow);
+}
+
+.cp-stat-icon { font-size: 1.5rem; margin-bottom: 6px; }
+.cp-stat-value { font-size: 1.8rem; font-weight: 700; color: var(--cp-primary); }
+.cp-stat-label { font-size: .85rem; color: var(--cp-muted); margin-top: 4px; }
+
+/* ============================================================
+   Project cards
+   ============================================================ */
+.cp-project-card h3 { margin-bottom: 6px; }
+.cp-project-card p  { color: var(--cp-muted); font-size: .875rem; }
+.cp-project-card small { color: var(--cp-muted); font-size: .75rem; }
+.cp-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ============================================================
+   Assistant cards
+   ============================================================ */
+.cp-assistant-icon { font-size: 2rem; margin-bottom: 8px; }
+.cp-badge {
+  display: inline-block;
+  background: var(--cp-primary);
+  color: #fff;
+  font-size: .7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* ============================================================
+   Messages (chat)
+   ============================================================ */
+.cp-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+}
+
+.cp-msg-user { align-self: flex-end; align-items: flex-end; }
+.cp-msg-assistant, .cp-msg-system { align-self: flex-start; align-items: flex-start; }
+
+.cp-msg-content {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: .9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cp-msg-user .cp-msg-content {
+  background: var(--cp-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.cp-msg-assistant .cp-msg-content {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-bottom-left-radius: 4px;
+}
+
+.cp-msg-system .cp-msg-content {
+  background: #fef9c3;
+  border: 1px solid #fde68a;
+  font-style: italic;
+  font-size: .85rem;
+}
+
+.cp-msg-meta { font-size: .72rem; color: var(--cp-muted); margin-top: 3px; padding: 0 4px; }
+
+.cp-save-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: .8rem;
+  color: var(--cp-muted);
+  padding: 2px 4px;
+  margin-top: 2px;
+}
+.cp-save-btn:hover { color: var(--cp-primary); }
+
+/* ============================================================
+   Conversations sidebar
+   ============================================================ */
+.cp-conv-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; overflow-y: auto; flex: 1; }
+
+.cp-conv-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: .85rem;
+  color: var(--cp-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background .12s;
+}
+
+.cp-conv-item:hover { background: var(--cp-border); }
+.cp-conv-item.active { background: var(--cp-primary); color: #fff; }
+
+/* ============================================================
+   Plans & payments
+   ============================================================ */
+.cp-plan-card {
+  background: var(--cp-surface);
+  border: 2px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cp-plan-card.cp-plan-popular { border-color: var(--cp-primary); }
+
+.cp-plan-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--cp-primary);
+  color: #fff;
+  font-size: .75rem;
+  padding: 2px 12px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.cp-plan-price { font-size: 1.5rem; font-weight: 700; color: var(--cp-primary); }
+.cp-plan-credits { color: var(--cp-muted); font-size: .875rem; }
+.cp-plan-features { display: flex; flex-direction: column; gap: 4px; }
+.cp-plan-features li::before { content: '✓ '; color: var(--cp-success); }
+.cp-plan-free-note { color: var(--cp-muted); font-size: .85rem; text-align: center; }
+
+.cp-payment-form { margin-top: 24px; }
+.cp-payment-info { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: var(--cp-radius); padding: 20px; margin-top: 24px; }
+.cp-payment-info ol { padding-left: 20px; }
+.cp-payment-info li { margin-bottom: 6px; }
+
+/* ============================================================
+   Saved responses
+   ============================================================ */
+.cp-saved-card { display: flex; flex-direction: column; gap: 8px; }
+.cp-saved-content { white-space: pre-wrap; font-size: .9rem; line-height: 1.5; }
+.cp-saved-meta { font-size: .75rem; color: var(--cp-muted); }
+
+/* ============================================================
+   Transactions table
+   ============================================================ */
+.cp-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.cp-table th { background: var(--cp-border); padding: 8px 12px; text-align: left; font-weight: 600; }
+.cp-table td { padding: 8px 12px; border-bottom: 1px solid var(--cp-border); }
+.cp-table tr:hover td { background: var(--cp-surface); }
+.cp-pos { color: var(--cp-success); font-weight: 600; }
+.cp-neg { color: var(--cp-danger); font-weight: 600; }
+
+/* ============================================================
+   Form wrap (for inline create forms)
+   ============================================================ */
+.cp-form-wrap {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ============================================================
+   Actions section (dashboard quick links)
+   ============================================================ */
+.cp-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.cp-actions h3 { width: 100%; margin-bottom: 4px; }
+
+/* ============================================================
+   Section
+   ============================================================ */
+.cp-section { margin-bottom: 24px; }
+.cp-section h3 { margin-bottom: 10px; }
+.cp-list-item { padding: 8px 12px; border-bottom: 1px solid var(--cp-border); font-size: .875rem; }
+
+/* ============================================================
+   Heading
+   ============================================================ */
+.cp-heading { margin-bottom: 20px; }
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 640px) {
+  .cp-chat-layout { flex-direction: column; }
+
+  .cp-chat-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--cp-border);
+    max-height: 220px;
+  }
+
+  .cp-nav {
+    gap: 2px;
+    padding: 8px;
+  }
+
+  .cp-nav-link {
+    padding: 5px 8px;
+    font-size: .8rem;
+  }
+
+  .cp-cards-grid,
+  .cp-plans-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cp-msg { max-width: 95%; }
+}
