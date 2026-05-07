@@ -135,6 +135,14 @@
   overflow: hidden;
 }
 
+.cp-chat-right {
+  width: 220px;
+  min-width: 220px;
+  border-left: 1px solid var(--cp-border);
+  background: var(--cp-surface);
+  padding: 16px;
+}
+
 .cp-msg-list {
   flex: 1;
   overflow-y: auto;
@@ -158,6 +166,88 @@
   flex: 1;
   margin: 0;
 }
+
+.cp-chat-menu-btn { display: none; margin-bottom: 10px; }
+
+.cp-health-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 600;
+  margin-top: 4px;
+  margin-right: 8px;
+}
+.cp-health-badge.healthy { background: #ecfdf5; color: #047857; }
+.cp-health-badge.long { background: #fef3c7; color: #92400e; }
+.cp-health-badge.very-long { background: #fee2e2; color: #b91c1c; }
+
+.cp-starter-chips,
+.cp-assistant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.cp-starter-chips h3,
+.cp-assistant-chips h3 {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.cp-assistant-chips .cp-btn.active {
+  background: var(--cp-primary);
+  color: #fff;
+}
+
+.cp-low-credits-banner,
+.cp-pro-banner {
+  border-radius: var(--cp-radius);
+  padding: 12px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cp-low-credits-banner {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+}
+
+.cp-pro-banner {
+  background: #eef2ff;
+  border: 1px solid #818cf8;
+}
+
+.cp-help-step { min-height: 76px; }
+
+.cp-faq-item { margin-bottom: 8px; }
+
+.cp-conv-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cp-conv-row .cp-conv-item { flex: 1; }
+
+.cp-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, .45);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.cp-modal .cp-card { max-width: 420px; width: 100%; }
 
 /* ============================================================
    Cards & containers
@@ -554,4 +644,20 @@
   }
 
   .cp-msg { max-width: 95%; }
+}
+
+@media (max-width: 768px) {
+  .cp-chat-menu-btn { display: inline-flex; }
+  .cp-chat-layout { position: relative; }
+  .cp-chat-sidebar {
+    display: none;
+    position: absolute;
+    z-index: 10;
+    inset: 0 auto 0 0;
+    width: 260px;
+    max-width: 85%;
+    box-shadow: var(--cp-shadow-lg);
+  }
+  .cp-chat-sidebar.cp-sidebar-open { display: flex; }
+  .cp-chat-right { display: none; }
 }

@@ -14,6 +14,7 @@ class CoachPro_Activator {
         self::create_tables();
         self::insert_defaults();
         self::create_roles();
+        self::create_pages();
         update_option( 'coachpro_db_version', COACHPRO_VERSION );
         flush_rewrite_rules();
     }
@@ -391,5 +392,47 @@ class CoachPro_Activator {
                 'coachpro_admin'  => true,
             )
         );
+    }
+
+    private static function create_pages() {
+        $pages = array(
+            'coachpro_page_login'        => array( 'slug' => 'coachpro-login',    'title' => 'Login',           'shortcode' => '[coachpro_login]' ),
+            'coachpro_page_register'     => array( 'slug' => 'coachpro-register', 'title' => 'Register',        'shortcode' => '[coachpro_register]' ),
+            'coachpro_page_dashboard'    => array( 'slug' => 'dashboard',         'title' => 'Dashboard',       'shortcode' => '[coachpro_dashboard]' ),
+            'coachpro_page_projects'     => array( 'slug' => 'projects',          'title' => 'My Projects',     'shortcode' => '[coachpro_projects]' ),
+            'coachpro_page_chat'         => array( 'slug' => 'chat',              'title' => 'Chat',            'shortcode' => '[coachpro_chat]' ),
+            'coachpro_page_assistants'   => array( 'slug' => 'assistants',        'title' => 'Assistants',      'shortcode' => '[coachpro_assistants]' ),
+            'coachpro_page_saved'        => array( 'slug' => 'saved-responses',   'title' => 'Saved Responses', 'shortcode' => '[coachpro_saved]' ),
+            'coachpro_page_buy_credits'  => array( 'slug' => 'buy-credits',       'title' => 'Buy Credits',     'shortcode' => '[coachpro_buy_credits]' ),
+            'coachpro_page_transactions' => array( 'slug' => 'transactions',      'title' => 'Transactions',    'shortcode' => '[coachpro_transactions]' ),
+            'coachpro_page_settings'     => array( 'slug' => 'coachpro-settings', 'title' => 'Settings',        'shortcode' => '[coachpro_settings]' ),
+            'coachpro_page_help'         => array( 'slug' => 'coachpro-help',     'title' => 'Help',            'shortcode' => '[coachpro_help]' ),
+        );
+
+        foreach ( $pages as $option_key => $page ) {
+            // اگر option پہلے سے موجود ہو اور page موجود ہو تو skip
+            $existing_id = get_option( $option_key );
+            if ( $existing_id && get_post( $existing_id ) ) {
+                continue;
+            }
+            // Slug سے تلاش کریں
+            $existing = get_page_by_path( $page['slug'] );
+            if ( $existing ) {
+                update_option( $option_key, $existing->ID );
+                continue;
+            }
+            // نیا page بنائیں
+            $page_id = wp_insert_post( array(
+                'post_title'   => $page['title'],
+                'post_name'    => $page['slug'],
+                'post_content' => $page['shortcode'],
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+                'post_author'  => 1,
+            ));
+            if ( $page_id && ! is_wp_error( $page_id ) ) {
+                update_option( $option_key, $page_id );
+            }
+        }
     }
 }
