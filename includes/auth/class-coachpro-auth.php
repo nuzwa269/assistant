@@ -153,7 +153,10 @@ class CoachPro_Auth {
     public static function rest_google_callback( WP_REST_Request $request ) {
         $code       = sanitize_text_field( (string) $request->get_param( 'code' ) );
         $raw_state  = base64_decode( (string) ( $request->get_param( 'state' ) ?: '' ), true );
-        $parts      = explode( '|', is_string( $raw_state ) ? $raw_state : '', 2 );
+        if ( false === $raw_state ) {
+            wp_die( 'Invalid OAuth state. Please try again.', 'CoachPro Error', array( 'response' => 400 ) );
+        }
+        $parts      = explode( '|', $raw_state, 2 );
         $nonce_val  = $parts[0] ?? '';
         $redirect_to = esc_url_raw( $parts[1] ?? home_url() );
 
@@ -210,8 +213,7 @@ class CoachPro_Auth {
         $user = get_user_by( 'email', $email );
         if ( ! $user ) {
             $email_parts = explode( '@', $email );
-            $username    = sanitize_user( $email_parts[0] ?? 'coachprouser', true );
-            $username    = $username ?: 'coachprouser';
+            $username    = sanitize_user( $email_parts[0] ?? 'coachprouser', true ) ?: 'coachprouser';
             $base        = $username;
             $i           = 1;
 

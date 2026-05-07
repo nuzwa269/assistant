@@ -140,6 +140,16 @@
     return s;
   }
 
+  function googleOauthUrl(cfg) {
+    try {
+      var url = new URL(String(cfg.restUrl || '').replace(/\/+$/, '') + '/auth/google', window.location.origin);
+      url.searchParams.set('redirect', window.location.origin + window.location.pathname + window.location.search + window.location.hash);
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
+
   function navBar(cfg, activeView) {
     var nav = el('nav', 'cp-nav');
     var links = [
@@ -232,8 +242,10 @@
         '</svg>' +
         'Continue with Google';
       googleBtn.addEventListener('click', function () {
-        var oauthUrl = cfg.restUrl.replace(/\/+$/, '') + '/auth/google';
-        window.location.href = oauthUrl + '?redirect=' + encodeURIComponent(window.location.href);
+        var oauthUrl = googleOauthUrl(cfg);
+        if (oauthUrl) {
+          window.location.href = oauthUrl;
+        }
       });
       card.appendChild(googleBtn);
 
@@ -365,8 +377,10 @@
         '</svg>' +
         'Continue with Google';
       googleBtn.addEventListener('click', function () {
-        var oauthUrl = cfg.restUrl.replace(/\/+$/, '') + '/auth/google';
-        window.location.href = oauthUrl + '?redirect=' + encodeURIComponent(window.location.href);
+        var oauthUrl = googleOauthUrl(cfg);
+        if (oauthUrl) {
+          window.location.href = oauthUrl;
+        }
       });
       card.appendChild(googleBtn);
 
