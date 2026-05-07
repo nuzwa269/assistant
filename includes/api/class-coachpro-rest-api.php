@@ -291,6 +291,18 @@ class CoachPro_REST_API {
             'callback'            => array( 'CoachPro_Admin_API', 'update_plan' ),
             'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
         ) );
+
+        // Google OAuth
+        register_rest_route( self::NS, '/auth/google', array(
+            'methods'             => 'GET',
+            'callback'            => array( 'CoachPro_Auth', 'rest_google_oauth' ),
+            'permission_callback' => '__return_true',
+        ) );
+        register_rest_route( self::NS, '/auth/google/callback', array(
+            'methods'             => 'GET',
+            'callback'            => array( 'CoachPro_Auth', 'rest_google_callback' ),
+            'permission_callback' => '__return_true',
+        ) );
     }
 
     // -------------------------------------------------------------------------

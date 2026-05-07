@@ -26,6 +26,36 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
             </tr>
         </table>
 
+        <h2><?php esc_html_e( 'Google Sign-In (OAuth 2.0)', 'coachpro-ai' ); ?></h2>
+        <p class="description">
+            <?php esc_html_e( 'Optional. To enable "Continue with Google" on the login page:', 'coachpro-ai' ); ?>
+        </p>
+        <ol style="list-style:decimal;padding-left:20px;margin-top:8px;">
+            <li><?php esc_html_e( 'Go to Google Cloud Console → APIs & Services → Credentials', 'coachpro-ai' ); ?></li>
+            <li><?php esc_html_e( 'Create an OAuth 2.0 Client ID (Web application type)', 'coachpro-ai' ); ?></li>
+            <li>
+                <?php esc_html_e( 'Add this Authorized redirect URI:', 'coachpro-ai' ); ?>
+                <code style="background:#f0f0f1;padding:2px 6px;border-radius:3px;">
+                    <?php echo esc_url( rest_url( 'coachpro/v1/auth/google/callback' ) ); ?>
+                </code>
+            </li>
+            <li><?php esc_html_e( 'Paste Client ID and Client Secret below.', 'coachpro-ai' ); ?></li>
+        </ol>
+        <table class="form-table">
+            <tr>
+                <th><label for="coachpro_google_client_id"><?php esc_html_e( 'Google Client ID', 'coachpro-ai' ); ?></label></th>
+                <td><input type="text" id="coachpro_google_client_id" name="coachpro_google_client_id"
+                           value="<?php echo esc_attr( get_option( 'coachpro_google_client_id' ) ); ?>"
+                           class="regular-text" placeholder="123456789-xxxx.apps.googleusercontent.com" /></td>
+            </tr>
+            <tr>
+                <th><label for="coachpro_google_client_secret"><?php esc_html_e( 'Google Client Secret', 'coachpro-ai' ); ?></label></th>
+                <td><input type="password" id="coachpro_google_client_secret" name="coachpro_google_client_secret"
+                           value="<?php echo esc_attr( get_option( 'coachpro_google_client_secret' ) ); ?>"
+                           class="regular-text" autocomplete="new-password" /></td>
+            </tr>
+        </table>
+
         <h2><?php esc_html_e( 'Payment Methods', 'coachpro-ai' ); ?></h2>
         <table class="form-table">
             <tr>

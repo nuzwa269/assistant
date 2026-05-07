@@ -140,6 +140,16 @@
     return s;
   }
 
+  function googleOauthUrl(cfg) {
+    try {
+      var url = new URL(String(cfg.restUrl || '').replace(/\/+$/, '') + '/auth/google', window.location.origin);
+      url.searchParams.set('redirect', window.location.origin + window.location.pathname + window.location.search + window.location.hash);
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
+
   function navBar(cfg, activeView) {
     var nav = el('nav', 'cp-nav');
     var links = [
@@ -180,7 +190,11 @@
       fd.append('action', 'coachpro_logout');
       fd.append('nonce', cfg.wpNonce);
       fetch(cfg.ajaxUrl, { method: 'POST', body: fd }).then(function () {
-        window.location.reload();
+        if (cfg.pageUrls && cfg.pageUrls.login) {
+          window.location.href = cfg.pageUrls.login;
+        } else {
+          window.location.reload();
+        }
       });
     });
     nav.appendChild(logoutBtn);
@@ -191,22 +205,11 @@
    * View: Login prompt (for non-logged-in users on protected pages)
    * --------------------------------------------------------------------- */
   function renderLogin(el_container, cfg) {
-    el_container.innerHTML = '';
-    var wrap = el('div', 'cp-card cp-center');
-    wrap.innerHTML = '<h2>Please log in</h2><p>You need to be logged in to use CoachPro AI.</p>';
-    var loginBtn = btn('Login', 'cp-btn-primary');
-    loginBtn.addEventListener('click', function () {
-      cfg.view = 'login';
-      renderView(el_container, cfg);
-    });
-    var regBtn = btn('Register');
-    regBtn.addEventListener('click', function () {
-      cfg.view = 'register';
-      renderView(el_container, cfg);
-    });
-    wrap.appendChild(loginBtn);
-    wrap.appendChild(regBtn);
-    el_container.appendChild(wrap);
+    if (cfg.pageUrls && cfg.pageUrls.login && window.location.href !== cfg.pageUrls.login) {
+      window.location.href = cfg.pageUrls.login + '?redirect_to=' + encodeURIComponent(window.location.href);
+      return;
+    }
+    renderLoginForm(el_container, cfg);
   }
 
   /* -----------------------------------------------------------------------
@@ -214,38 +217,101 @@
    * --------------------------------------------------------------------- */
   function renderLoginForm(el_container, cfg) {
     el_container.innerHTML = '';
-    var wrap = el('div', 'cp-card cp-auth-form');
-    wrap.innerHTML = '<h2>🔐 Login to CoachPro AI</h2>';
+    var wrap = el('div', 'cp-auth-wrap');
 
-    var usernameInput = input('text', 'Username or Email');
-    var passwordInput = input('password', 'Password');
-    var submitBtn     = btn('Login', 'cp-btn-primary cp-full');
-    var errDiv        = el('div', 'cp-error cp-hidden');
+    var brand = el('div', 'cp-auth-brand');
+    brand.innerHTML =
+      '<div class="cp-auth-logo">🎓</div>' +
+      '<h1 class="cp-auth-title">CoachPro AI</h1>';
+    wrap.appendChild(brand);
 
-    wrap.appendChild(usernameInput);
-    wrap.appendChild(passwordInput);
-    wrap.appendChild(errDiv);
-    wrap.appendChild(submitBtn);
+    var card = el('div', 'cp-auth-card');
+    card.innerHTML =
+      '<h2 class="cp-auth-heading">Welcome back</h2>' +
+      '<p class="cp-auth-sub">Sign in to continue your AI-powered coaching journey.</p>';
 
-    var regLink = document.createElement('p');
-    regLink.innerHTML = 'No account? <a href="#" class="cp-link">Register</a>';
+    if (cfg.googleClientId) {
+      var googleBtn = el('button', 'cp-btn-google');
+      googleBtn.type = 'button';
+      googleBtn.innerHTML =
+        '<svg class="cp-google-icon" viewBox="0 0 24 24" width="20" height="20">' +
+        '<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>' +
+        '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>' +
+        '<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>' +
+        '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>' +
+        '</svg>' +
+        'Continue with Google';
+      googleBtn.addEventListener('click', function () {
+        var oauthUrl = googleOauthUrl(cfg);
+        if (oauthUrl) {
+          window.location.href = oauthUrl;
+        }
+      });
+      card.appendChild(googleBtn);
+
+      var divider = el('div', 'cp-auth-divider');
+      divider.innerHTML = '<span>OR SIGN IN WITH EMAIL</span>';
+      card.appendChild(divider);
+    }
+
+    var emailLabel = el('label', 'cp-field-label', 'Email');
+    var emailInput = input('email', 'you@example.com');
+    emailInput.autocomplete = 'email';
+
+    var passLabel = el('label', 'cp-field-label', 'Password');
+    var passWrap = el('div', 'cp-pass-wrap');
+    var passInput = input('password', '••••••••');
+    passInput.autocomplete = 'current-password';
+    var passToggle = el('button', 'cp-pass-toggle', '👁');
+    passToggle.type = 'button';
+    passToggle.title = 'Show/hide password';
+    passToggle.addEventListener('click', function () {
+      passInput.type = passInput.type === 'password' ? 'text' : 'password';
+      passToggle.textContent = passInput.type === 'password' ? '👁' : '🙈';
+    });
+    passWrap.appendChild(passInput);
+    passWrap.appendChild(passToggle);
+
+    var errDiv   = el('div', 'cp-error cp-hidden');
+    var submitBtn = btn('Sign In', 'cp-btn-primary cp-full cp-btn-lg');
+
+    [emailLabel, emailInput, passLabel, passWrap, errDiv, submitBtn].forEach(function (n) {
+      card.appendChild(n);
+    });
+
+    var regLink = el('p', 'cp-auth-switch');
+    regLink.innerHTML = 'Don\'t have an account? <a href="#" class="cp-link">Sign up</a>';
     regLink.querySelector('a').addEventListener('click', function (e) {
       e.preventDefault();
-      cfg.view = 'register';
-      renderView(el_container, cfg);
+      if (cfg.pageUrls && cfg.pageUrls.register) {
+        window.location.href = cfg.pageUrls.register;
+      } else {
+        cfg.view = 'register';
+        renderView(el_container, cfg);
+      }
     });
-    wrap.appendChild(regLink);
+    card.appendChild(regLink);
+
+    wrap.appendChild(card);
+    el_container.appendChild(wrap);
 
     submitBtn.addEventListener('click', function () {
+      var emailVal = emailInput.value.trim();
+      var passVal  = passInput.value;
+      if (!emailVal || !passVal) {
+        errDiv.textContent = 'Please enter your email and password.';
+        errDiv.classList.remove('cp-hidden');
+        return;
+      }
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Logging in…';
+      submitBtn.textContent = 'Signing in…';
       errDiv.classList.add('cp-hidden');
 
       var fd = new FormData();
-      fd.append('action', 'coachpro_login');
-      fd.append('nonce', cfg.wpNonce);
-      fd.append('username', usernameInput.value);
-      fd.append('password', passwordInput.value);
+      fd.append('action',   'coachpro_login');
+      fd.append('nonce',    cfg.wpNonce);
+      fd.append('username', emailVal);
+      fd.append('password', passVal);
 
       fetch(cfg.ajaxUrl, { method: 'POST', body: fd })
         .then(function (r) { return r.json(); })
@@ -253,24 +319,32 @@
           if (data.success) {
             cfg.wpUserId = data.data.id;
             cfg.wpNonce  = data.data.nonce;
-            cfg.view     = 'dashboard';
-            renderView(el_container, cfg);
+            if (cfg.pageUrls && cfg.pageUrls.dashboard) {
+              window.location.href = cfg.pageUrls.dashboard;
+            } else {
+              cfg.view = 'dashboard';
+              renderView(el_container, cfg);
+            }
           } else {
-            errDiv.textContent = data.data.message || 'Login failed.';
+            errDiv.textContent = data.data.message || 'Login failed. Please check your credentials.';
             errDiv.classList.remove('cp-hidden');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Login';
+            submitBtn.textContent = 'Sign In';
           }
         })
         .catch(function () {
           errDiv.textContent = 'Network error. Please try again.';
           errDiv.classList.remove('cp-hidden');
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Login';
+          submitBtn.textContent = 'Sign In';
         });
     });
 
-    el_container.appendChild(wrap);
+    [emailInput, passInput].forEach(function (inp) {
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submitBtn.click(); }
+      });
+    });
   }
 
   /* -----------------------------------------------------------------------
@@ -278,38 +352,107 @@
    * --------------------------------------------------------------------- */
   function renderRegisterForm(el_container, cfg) {
     el_container.innerHTML = '';
-    var wrap = el('div', 'cp-card cp-auth-form');
-    wrap.innerHTML = '<h2>📝 Create Account</h2>';
+    var wrap = el('div', 'cp-auth-wrap');
 
-    var unameInput  = input('text', 'Username');
-    var emailInput  = input('email', 'Email');
-    var passInput   = input('password', 'Password');
-    var submitBtn   = btn('Register', 'cp-btn-primary cp-full');
-    var errDiv      = el('div', 'cp-error cp-hidden');
+    var brand = el('div', 'cp-auth-brand');
+    brand.innerHTML =
+      '<div class="cp-auth-logo">🎓</div>' +
+      '<h1 class="cp-auth-title">CoachPro AI</h1>';
+    wrap.appendChild(brand);
 
-    [unameInput, emailInput, passInput, errDiv, submitBtn].forEach(function (node) {
-      wrap.appendChild(node);
+    var card = el('div', 'cp-auth-card');
+    card.innerHTML =
+      '<h2 class="cp-auth-heading">Create your account</h2>' +
+      '<p class="cp-auth-sub">Start your AI-powered coaching journey today.</p>';
+
+    if (cfg.googleClientId) {
+      var googleBtn = el('button', 'cp-btn-google');
+      googleBtn.type = 'button';
+      googleBtn.innerHTML =
+        '<svg class="cp-google-icon" viewBox="0 0 24 24" width="20" height="20">' +
+        '<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>' +
+        '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>' +
+        '<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>' +
+        '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>' +
+        '</svg>' +
+        'Continue with Google';
+      googleBtn.addEventListener('click', function () {
+        var oauthUrl = googleOauthUrl(cfg);
+        if (oauthUrl) {
+          window.location.href = oauthUrl;
+        }
+      });
+      card.appendChild(googleBtn);
+
+      var divider = el('div', 'cp-auth-divider');
+      divider.innerHTML = '<span>OR SIGN UP WITH EMAIL</span>';
+      card.appendChild(divider);
+    }
+
+    var unameLabel = el('label', 'cp-field-label', 'Username');
+    var unameInput = input('text', 'johndoe');
+    unameInput.autocomplete = 'username';
+
+    var emailLabel = el('label', 'cp-field-label', 'Email');
+    var emailInput = input('email', 'you@example.com');
+    emailInput.autocomplete = 'email';
+
+    var passLabel  = el('label', 'cp-field-label', 'Password');
+    var passWrap   = el('div', 'cp-pass-wrap');
+    var passInput  = input('password', '••••••••');
+    passInput.autocomplete = 'new-password';
+    var passToggle = el('button', 'cp-pass-toggle', '👁');
+    passToggle.type = 'button';
+    passToggle.addEventListener('click', function () {
+      passInput.type = passInput.type === 'password' ? 'text' : 'password';
+      passToggle.textContent = passInput.type === 'password' ? '👁' : '🙈';
+    });
+    passWrap.appendChild(passInput);
+    passWrap.appendChild(passToggle);
+
+    var errDiv    = el('div', 'cp-error cp-hidden');
+    var submitBtn = btn('Create Account', 'cp-btn-primary cp-full cp-btn-lg');
+
+    [unameLabel, unameInput, emailLabel, emailInput, passLabel, passWrap, errDiv, submitBtn].forEach(function (n) {
+      card.appendChild(n);
     });
 
-    var loginLink = document.createElement('p');
-    loginLink.innerHTML = 'Have an account? <a href="#" class="cp-link">Login</a>';
+    var loginLink = el('p', 'cp-auth-switch');
+    loginLink.innerHTML = 'Already have an account? <a href="#" class="cp-link">Sign in</a>';
     loginLink.querySelector('a').addEventListener('click', function (e) {
       e.preventDefault();
-      cfg.view = 'login';
-      renderView(el_container, cfg);
+      if (cfg.pageUrls && cfg.pageUrls.login) {
+        window.location.href = cfg.pageUrls.login;
+      } else {
+        cfg.view = 'login';
+        renderView(el_container, cfg);
+      }
     });
-    wrap.appendChild(loginLink);
+    card.appendChild(loginLink);
+
+    wrap.appendChild(card);
+    el_container.appendChild(wrap);
 
     submitBtn.addEventListener('click', function () {
+      if (!unameInput.value.trim() || !emailInput.value.trim() || !passInput.value) {
+        errDiv.textContent = 'All fields are required.';
+        errDiv.classList.remove('cp-hidden');
+        return;
+      }
+      if (passInput.value.length < 6) {
+        errDiv.textContent = 'Password must be at least 6 characters.';
+        errDiv.classList.remove('cp-hidden');
+        return;
+      }
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Registering…';
+      submitBtn.textContent = 'Creating account…';
       errDiv.classList.add('cp-hidden');
 
       var fd = new FormData();
-      fd.append('action', 'coachpro_register');
-      fd.append('nonce', cfg.wpNonce);
-      fd.append('username', unameInput.value);
-      fd.append('email', emailInput.value);
+      fd.append('action',   'coachpro_register');
+      fd.append('nonce',    cfg.wpNonce);
+      fd.append('username', unameInput.value.trim());
+      fd.append('email',    emailInput.value.trim());
       fd.append('password', passInput.value);
 
       fetch(cfg.ajaxUrl, { method: 'POST', body: fd })
@@ -318,18 +461,20 @@
           if (data.success) {
             cfg.wpUserId = data.data.id;
             cfg.wpNonce  = data.data.nonce;
-            cfg.view     = 'dashboard';
-            renderView(el_container, cfg);
+            if (cfg.pageUrls && cfg.pageUrls.dashboard) {
+              window.location.href = cfg.pageUrls.dashboard;
+            } else {
+              cfg.view = 'dashboard';
+              renderView(el_container, cfg);
+            }
           } else {
             errDiv.textContent = data.data.message || 'Registration failed.';
             errDiv.classList.remove('cp-hidden');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Register';
+            submitBtn.textContent = 'Create Account';
           }
         });
     });
-
-    el_container.appendChild(wrap);
   }
 
   /* -----------------------------------------------------------------------
