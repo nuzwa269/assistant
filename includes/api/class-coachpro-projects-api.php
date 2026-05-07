@@ -9,9 +9,23 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class CoachPro_Projects_API {
 
+    private static function owns_or_admin( $resource_user_id ) : bool {
+        $current = get_current_user_id();
+        if ( (int) $resource_user_id === $current ) {
+            return true;
+        }
+        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+            return true;
+        }
+        return false;
+    }
+
     public static function list_projects( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
-        $rows    = CoachPro_DB::get_rows( 'projects', array( 'user_id' => $user_id ), 'created_at DESC' );
+        $where   = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+            ? array()
+            : array( 'user_id' => $user_id );
+        $rows    = CoachPro_DB::get_rows( 'projects', $where, 'created_at DESC' );
         return rest_ensure_response( $rows );
     }
 
@@ -49,8 +63,11 @@ class CoachPro_Projects_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'projects', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Project not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $params = $request->get_json_params();
@@ -76,8 +93,11 @@ class CoachPro_Projects_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'projects', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Project not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;

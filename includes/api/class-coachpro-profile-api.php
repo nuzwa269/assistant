@@ -10,6 +10,17 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class CoachPro_Profile_API {
 
+    private static function owns_or_admin( $resource_user_id ) : bool {
+        $current = get_current_user_id();
+        if ( (int) $resource_user_id === $current ) {
+            return true;
+        }
+        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+            return true;
+        }
+        return false;
+    }
+
     // -------------------------------------------------------------------------
     // Profile
     // -------------------------------------------------------------------------
@@ -48,7 +59,10 @@ class CoachPro_Profile_API {
     // -------------------------------------------------------------------------
     public static function get_transactions( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
-        $rows    = CoachPro_DB::get_rows( 'transactions', array( 'user_id' => $user_id ), 'created_at DESC', 50 );
+        $where   = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+            ? array()
+            : array( 'user_id' => $user_id );
+        $rows    = CoachPro_DB::get_rows( 'transactions', $where, 'created_at DESC', 50 );
         return rest_ensure_response( $rows );
     }
 
@@ -63,15 +77,26 @@ class CoachPro_Profile_API {
         $t_saved = CoachPro_DB::table( 'saved_responses' );
         $t_msg   = CoachPro_DB::table( 'messages' );
 
-        $rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
-             FROM `{$t_saved}` sr
-             LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
-             WHERE sr.user_id = %d
-             ORDER BY sr.created_at DESC
-             LIMIT 100",
-            $user_id
-        ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+            $rows = $wpdb->get_results(
+                "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
+                 FROM `{$t_saved}` sr
+                 LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
+                 ORDER BY sr.created_at DESC
+                 LIMIT 100",
+                ARRAY_A
+            ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        } else {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
+                 FROM `{$t_saved}` sr
+                 LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
+                 WHERE sr.user_id = %d
+                 ORDER BY sr.created_at DESC
+                 LIMIT 100",
+                $user_id
+            ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        }
 
         return rest_ensure_response( $rows );
     }
@@ -87,6 +112,14 @@ class CoachPro_Profile_API {
         $message_id = sanitize_text_field( $params['message_id'] ?? '' );
         if ( empty( $message_id ) ) {
             return new WP_Error( 'missing_fields', __( 'message_id is required.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+
+        $message = CoachPro_DB::get_row( 'messages', $message_id );
+        if ( ! $message ) {
+            return new WP_Error( 'not_found', __( 'Message not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $message['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;
@@ -115,8 +148,11 @@ class CoachPro_Profile_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'saved_responses', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Saved response not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;

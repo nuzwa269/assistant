@@ -292,6 +292,173 @@
   margin: 40px auto;
 }
 
+.coachpro-app .cp-auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f9fafb 60%, #ede9fe 100%);
+}
+
+.coachpro-app .cp-auth-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.coachpro-app .cp-auth-logo {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.coachpro-app .cp-auth-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--cp-primary);
+  margin: 0;
+}
+
+.coachpro-app .cp-auth-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(99,102,241,.12), 0 2px 8px rgba(0,0,0,.06);
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.coachpro-app .cp-auth-heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--cp-text);
+  margin: 0 0 6px;
+}
+
+.coachpro-app .cp-auth-sub {
+  color: var(--cp-muted);
+  font-size: .9rem;
+  margin-bottom: 24px;
+}
+
+.coachpro-app .cp-btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 1.5px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #3c4043;
+  font-size: .9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: box-shadow .15s, background .15s;
+  font-family: inherit;
+  margin-bottom: 16px;
+}
+
+.coachpro-app .cp-btn-google:hover {
+  background: #f8f9fa;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+
+.coachpro-app .cp-google-icon { flex-shrink: 0; }
+
+.coachpro-app .cp-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 20px;
+  color: var(--cp-muted);
+  font-size: .8rem;
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+
+.coachpro-app .cp-auth-divider::before,
+.coachpro-app .cp-auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--cp-border);
+}
+
+.coachpro-app .cp-field-label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--cp-text);
+  margin-bottom: 6px;
+}
+
+.coachpro-app .cp-pass-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.coachpro-app .cp-pass-wrap .cp-input {
+  margin-bottom: 0;
+  padding-right: 44px;
+}
+
+.coachpro-app .cp-pass-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px;
+  color: var(--cp-muted);
+}
+
+.coachpro-app .cp-btn-lg {
+  padding: 11px 20px;
+  font-size: .95rem;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.coachpro-app .cp-auth-switch {
+  text-align: center;
+  font-size: .875rem;
+  color: var(--cp-muted);
+  margin: 16px 0 0;
+}
+
+.coachpro-app .cp-link {
+  color: var(--cp-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.coachpro-app .cp-link:hover { text-decoration: underline; }
+
+.coachpro-app[data-theme="dark"] .cp-auth-wrap {
+  background: linear-gradient(135deg, #1e1b4b 0%, #0f0f0f 60%, #1a1a2e 100%);
+}
+
+.coachpro-app[data-theme="dark"] .cp-auth-card {
+  background: var(--cp-surface);
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+
+.coachpro-app[data-theme="dark"] .cp-btn-google {
+  background: var(--cp-surface);
+  border-color: var(--cp-border);
+  color: var(--cp-text);
+}
+
+.coachpro-app[data-theme="dark"] .cp-btn-google:hover {
+  background: #2a2a2a;
+}
+
 .cp-center { text-align: center; }
 
 /* ============================================================
@@ -405,6 +572,11 @@
 }
 
 .cp-hidden { display: none !important; }
+
+@media (max-width: 480px) {
+  .coachpro-app .cp-auth-card { padding: 28px 20px; }
+  .coachpro-app .cp-auth-heading { font-size: 1.25rem; }
+}
 
 /* ============================================================
    Stats

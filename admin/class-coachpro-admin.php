@@ -41,6 +41,8 @@ class CoachPro_Admin {
             'coachpro_openai_key',
             'coachpro_anthropic_key',
             'coachpro_openrouter_key',
+            'coachpro_google_client_id',
+            'coachpro_google_client_secret',
             'coachpro_jazzcash_no',
             'coachpro_easypaisa_no',
             'coachpro_bank_details',

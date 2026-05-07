@@ -9,11 +9,24 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class CoachPro_Conversations_API {
 
+    private static function owns_or_admin( $resource_user_id ) : bool {
+        $current = get_current_user_id();
+        if ( (int) $resource_user_id === $current ) {
+            return true;
+        }
+        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+            return true;
+        }
+        return false;
+    }
+
     public static function list_conversations( WP_REST_Request $request ) {
         $user_id    = get_current_user_id();
         $project_id = sanitize_text_field( $request->get_param( 'project_id' ) ?? '' );
 
-        $where = array( 'user_id' => $user_id );
+        $where = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+            ? array()
+            : array( 'user_id' => $user_id );
         if ( $project_id ) {
             $where['project_id'] = $project_id;
         }
@@ -62,8 +75,11 @@ class CoachPro_Conversations_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'conversations', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Conversation not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $params = $request->get_json_params();
@@ -86,8 +102,11 @@ class CoachPro_Conversations_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'conversations', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Conversation not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;
@@ -102,8 +121,11 @@ class CoachPro_Conversations_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'conversations', $id );
 
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Conversation not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $rows = CoachPro_DB::get_rows( 'messages', array( 'conversation_id' => $id ), 'created_at ASC', 200 );
@@ -116,8 +138,11 @@ class CoachPro_Conversations_API {
         $params  = $request->get_json_params();
 
         $row = CoachPro_DB::get_row( 'conversations', $conv_id );
-        if ( ! $row || (int) $row['user_id'] !== $user_id ) {
+        if ( ! $row ) {
             return new WP_Error( 'not_found', __( 'Conversation not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! self::owns_or_admin( $row['user_id'] ) ) {
+            return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $role    = in_array( $params['role'] ?? '', array( 'user', 'assistant', 'system' ), true ) ? $params['role'] : 'user';

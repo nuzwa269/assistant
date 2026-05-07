@@ -75,6 +75,7 @@ class CoachPro_Shortcodes {
             'projectId'      => sanitize_text_field( $atts['project_id'] ),
             'supabaseUrl'    => null,
             'pluginUrl'      => COACHPRO_PLUGIN_URL,
+            'googleClientId' => get_option( 'coachpro_google_client_id', '' ) ? true : false,
             // Page URLs for JS navigation
             'pageUrls'       => array(
                 'login'        => get_permalink( get_option('coachpro_page_login') ) ?: '',
