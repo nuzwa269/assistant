@@ -14,7 +14,7 @@ class CoachPro_Projects_API {
         if ( (int) $resource_user_id === $current ) {
             return true;
         }
-        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+        if ( current_user_can( 'manage_options' ) ) {
             return true;
         }
         return false;
@@ -22,7 +22,7 @@ class CoachPro_Projects_API {
 
     public static function list_projects( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
-        $where   = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+        $where   = current_user_can( 'manage_options' )
             ? array()
             : array( 'user_id' => $user_id );
         $rows    = CoachPro_DB::get_rows( 'projects', $where, 'created_at DESC' );

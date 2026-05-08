@@ -15,7 +15,7 @@ class CoachPro_Profile_API {
         if ( (int) $resource_user_id === $current ) {
             return true;
         }
-        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+        if ( current_user_can( 'manage_options' ) ) {
             return true;
         }
         return false;
@@ -59,7 +59,7 @@ class CoachPro_Profile_API {
     // -------------------------------------------------------------------------
     public static function get_transactions( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
-        $where   = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+        $where   = current_user_can( 'manage_options' )
             ? array()
             : array( 'user_id' => $user_id );
         $rows    = CoachPro_DB::get_rows( 'transactions', $where, 'created_at DESC', 50 );
@@ -77,7 +77,7 @@ class CoachPro_Profile_API {
         $t_saved = CoachPro_DB::table( 'saved_responses' );
         $t_msg   = CoachPro_DB::table( 'messages' );
 
-        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+        if ( current_user_can( 'manage_options' ) ) {
             $rows = $wpdb->get_results(
                 "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
                  FROM `{$t_saved}` sr

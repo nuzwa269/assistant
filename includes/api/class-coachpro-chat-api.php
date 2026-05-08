@@ -64,9 +64,18 @@ class CoachPro_Chat_API {
 
         // Build messages array for AI call (get assistant system prompt)
         $assistant = CoachPro_DB::get_row( 'assistants', $conv['assistant_id'] );
+
+        // Assistant must exist for all users, then access is verified via user_can_use() (includes admin bypass).
+        if ( ! $assistant ) {
+            return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
+        }
+
         $ai_messages = array();
 
-        if ( $assistant && ! empty( $assistant['system_prompt'] ) ) {
+        if ( ! empty( $assistant['system_prompt'] ) ) {
             $ai_messages[] = array( 'role' => 'system', 'content' => $assistant['system_prompt'] );
         }
 

@@ -14,7 +14,7 @@ class CoachPro_Conversations_API {
         if ( (int) $resource_user_id === $current ) {
             return true;
         }
-        if ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) ) {
+        if ( current_user_can( 'manage_options' ) ) {
             return true;
         }
         return false;
@@ -24,7 +24,7 @@ class CoachPro_Conversations_API {
         $user_id    = get_current_user_id();
         $project_id = sanitize_text_field( $request->get_param( 'project_id' ) ?? '' );
 
-        $where = ( current_user_can( 'coachpro_admin' ) || current_user_can( 'manage_options' ) )
+        $where = current_user_can( 'manage_options' )
             ? array()
             : array( 'user_id' => $user_id );
         if ( $project_id ) {
@@ -51,6 +51,16 @@ class CoachPro_Conversations_API {
         $project = CoachPro_DB::get_row( 'projects', $project_id );
         if ( ! $project || (int) $project['user_id'] !== $user_id ) {
             return new WP_Error( 'forbidden', __( 'Project not found.', 'coachpro-ai' ), array( 'status' => 403 ) );
+        }
+
+        // Verify assistant exists and is accessible.
+        // user_can_use() grants admins access to any assistant for their own conversations.
+        $assistant = CoachPro_DB::get_row( 'assistants', $assistant_id );
+        if ( ! $assistant ) {
+            return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;
