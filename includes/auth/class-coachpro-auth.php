@@ -256,7 +256,7 @@ class CoachPro_Auth {
             'plan'        => get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free',
             'credits'     => (int) get_user_meta( $user_id, 'coachpro_credits', true ),
             'plan_renews' => get_user_meta( $user_id, 'coachpro_plan_renews', true ),
-            'is_admin'    => user_can( $user_id, 'coachpro_admin' ) || user_can( $user_id, 'manage_options' ),
+            'is_admin'    => user_can( $user_id, 'manage_options' ),
             'nonce'       => wp_create_nonce( 'wp_rest' ),
         );
     }

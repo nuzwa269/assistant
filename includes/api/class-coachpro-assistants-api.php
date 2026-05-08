@@ -14,14 +14,25 @@ class CoachPro_Assistants_API {
         $user_id = get_current_user_id();
         $t = CoachPro_DB::table( 'assistants' );
 
-        // Return: prebuilt + user's own custom assistants, with activation status
-        $rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT a.*, (SELECT COUNT(*) FROM `" . CoachPro_DB::table('user_active_assistants') . "` uaa WHERE uaa.assistant_id = a.id AND uaa.user_id = %d) AS is_activated
-             FROM `{$t}` a
-             WHERE a.is_prebuilt = 1 OR a.owner_id = %d
-             ORDER BY a.is_prebuilt DESC, a.created_at ASC",
-            $user_id, $user_id
-        ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        // Admins see all prebuilt assistants; regular users see only active ones.
+        if ( current_user_can( 'manage_options' ) ) {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT a.*, (SELECT COUNT(*) FROM `" . CoachPro_DB::table('user_active_assistants') . "` uaa WHERE uaa.assistant_id = a.id AND uaa.user_id = %d) AS is_activated
+                 FROM `{$t}` a
+                 WHERE a.is_prebuilt = 1 OR a.owner_id = %d
+                 ORDER BY a.is_prebuilt DESC, a.created_at ASC",
+                $user_id, $user_id
+            ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        } else {
+            // Regular users: active prebuilt assistants + their own custom assistants only.
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT a.*, (SELECT COUNT(*) FROM `" . CoachPro_DB::table('user_active_assistants') . "` uaa WHERE uaa.assistant_id = a.id AND uaa.user_id = %d) AS is_activated
+                 FROM `{$t}` a
+                 WHERE (a.is_prebuilt = 1 AND a.is_active = 1) OR a.owner_id = %d
+                 ORDER BY a.is_prebuilt DESC, a.created_at ASC",
+                $user_id, $user_id
+            ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        }
 
         return rest_ensure_response( $rows );
     }
@@ -68,7 +79,7 @@ class CoachPro_Assistants_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'assistants', $id );
 
-        if ( ! $row || ( (int) $row['owner_id'] !== $user_id && ! current_user_can( 'coachpro_admin' ) ) ) {
+        if ( ! $row || ( (int) $row['owner_id'] !== $user_id && ! current_user_can( 'manage_options' ) ) ) {
             return new WP_Error( 'forbidden', __( 'You cannot edit this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
@@ -95,7 +106,7 @@ class CoachPro_Assistants_API {
         $id      = sanitize_text_field( $request->get_param( 'id' ) );
         $row     = CoachPro_DB::get_row( 'assistants', $id );
 
-        if ( ! $row || ( (int) $row['owner_id'] !== $user_id && ! current_user_can( 'coachpro_admin' ) ) ) {
+        if ( ! $row || ( (int) $row['owner_id'] !== $user_id && ! current_user_can( 'manage_options' ) ) ) {
             return new WP_Error( 'forbidden', __( 'You cannot delete this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
@@ -111,6 +122,20 @@ class CoachPro_Assistants_API {
         $assistant = CoachPro_DB::get_row( 'assistants', $assistant_id );
         if ( ! $assistant ) {
             return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+
+        // Non-admins may only activate: active prebuilt assistants OR their own custom assistants.
+        if ( ! current_user_can( 'manage_options' ) ) {
+            if ( (int) $assistant['is_prebuilt'] === 1 ) {
+                if ( ! (int) $assistant['is_active'] ) {
+                    return new WP_Error( 'forbidden', __( 'This assistant is not available.', 'coachpro-ai' ), array( 'status' => 403 ) );
+                }
+            } else {
+                // Custom assistant: must be owned by the current user.
+                if ( (int) $assistant['owner_id'] !== $user_id ) {
+                    return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
+                }
+            }
         }
 
         // Check prebuilt activation limit for free users
