@@ -28,7 +28,8 @@ class CoachPro_Admin {
         add_submenu_page( 'coachpro-ai', __( 'Users', 'coachpro-ai' ),      __( 'Users', 'coachpro-ai' ),      'manage_options', 'coachpro-users',         array( __CLASS__, 'page_users' ) );
         add_submenu_page( 'coachpro-ai', __( 'Payments', 'coachpro-ai' ),   __( 'Payments', 'coachpro-ai' ),   'manage_options', 'coachpro-payments',      array( __CLASS__, 'page_payments' ) );
         add_submenu_page( 'coachpro-ai', __( 'AI Models', 'coachpro-ai' ),  __( 'AI Models', 'coachpro-ai' ),  'manage_options', 'coachpro-models',        array( __CLASS__, 'page_models' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Assistants', 'coachpro-ai' ), __( 'Assistants', 'coachpro-ai' ), 'manage_options', 'coachpro-assistants',    array( __CLASS__, 'page_assistants' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Prebuilt Assistants', 'coachpro-ai' ), __( 'Prebuilt Assistants', 'coachpro-ai' ), 'manage_options', 'coachpro-assistants', array( __CLASS__, 'page_assistants' ) );
+        add_submenu_page( 'coachpro-ai', __( 'AI Providers', 'coachpro-ai' ), __( 'AI Providers', 'coachpro-ai' ), 'manage_options', 'coachpro-ai-providers', array( __CLASS__, 'page_ai_providers' ) );
         add_submenu_page( 'coachpro-ai', __( 'Plans & Packs', 'coachpro-ai' ), __( 'Plans & Packs', 'coachpro-ai' ), 'manage_options', 'coachpro-plans',   array( __CLASS__, 'page_plans' ) );
         add_submenu_page( 'coachpro-ai', __( 'Settings', 'coachpro-ai' ),   __( 'Settings', 'coachpro-ai' ),   'manage_options', 'coachpro-settings',     array( __CLASS__, 'page_settings' ) );
     }
@@ -40,6 +41,7 @@ class CoachPro_Admin {
         $settings = array(
             'coachpro_openai_key',
             'coachpro_anthropic_key',
+            'coachpro_gemini_key',
             'coachpro_openrouter_key',
             'coachpro_google_client_id',
             'coachpro_google_client_secret',
@@ -71,11 +73,54 @@ class CoachPro_Admin {
     public static function page_assistants() {
         require_once COACHPRO_PLUGIN_DIR . 'admin/views/assistants.php';
     }
+    public static function page_ai_providers() {
+        require_once COACHPRO_PLUGIN_DIR . 'admin/views/ai-providers.php';
+    }
     public static function page_plans() {
         require_once COACHPRO_PLUGIN_DIR . 'admin/views/plans.php';
     }
     public static function page_settings() {
         require_once COACHPRO_PLUGIN_DIR . 'admin/views/settings.php';
+    }
+
+    public static function enqueue_assets() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        $page = sanitize_key( wp_unslash( $_GET['page'] ?? '' ) );
+        if ( ! in_array( $page, array( 'coachpro-assistants', 'coachpro-ai-providers' ), true ) ) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'coachpro-admin',
+            COACHPRO_PLUGIN_URL . 'admin/css/coachpro-admin.css',
+            array(),
+            COACHPRO_VERSION
+        );
+        wp_enqueue_script(
+            'coachpro-admin',
+            COACHPRO_PLUGIN_URL . 'admin/js/coachpro-admin.js',
+            array(),
+            COACHPRO_VERSION,
+            true
+        );
+        wp_localize_script(
+            'coachpro-admin',
+            'coachproAdmin',
+            array(
+                'page'                => $page,
+                'nonce'               => wp_create_nonce( 'wp_rest' ),
+                'restUrl'             => rest_url( 'coachpro/v1/admin' ),
+                'defaultModelId'      => CoachPro_AI_Provider::get_default_model_id(),
+                'providerDefinitions' => CoachPro_Admin_API::get_provider_definitions(),
+                'pageUrls'            => array(
+                    'assistants'   => admin_url( 'admin.php?page=coachpro-assistants' ),
+                    'ai_providers' => admin_url( 'admin.php?page=coachpro-ai-providers' ),
+                ),
+            )
+        );
     }
 
     // -------------------------------------------------------------------------

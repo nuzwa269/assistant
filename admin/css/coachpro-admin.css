@@ -1,0 +1,44 @@
+.coachpro-admin-app {
+    margin-top: 16px;
+}
+
+.coachpro-admin-card {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    padding: 20px;
+}
+
+.coachpro-admin-form .coachpro-admin-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.coachpro-admin-form p {
+    margin-top: 0;
+}
+
+.coachpro-admin-form input[type="text"],
+.coachpro-admin-form input[type="password"],
+.coachpro-admin-form input[type="number"],
+.coachpro-admin-form select,
+.coachpro-admin-form textarea {
+    width: 100%;
+}
+
+.coachpro-admin-actions {
+    min-width: 220px;
+}
+
+.coachpro-admin-actions .button {
+    margin-bottom: 6px;
+}
+
+.coachpro-admin-card code {
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}

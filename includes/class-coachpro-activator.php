@@ -19,6 +19,18 @@ class CoachPro_Activator {
         flush_rewrite_rules();
     }
 
+    public static function maybe_upgrade() {
+        $db_version = (string) get_option( 'coachpro_db_version', '0.0.0' );
+        if ( version_compare( $db_version, COACHPRO_VERSION, '>=' ) ) {
+            return;
+        }
+
+        self::create_tables();
+        self::seed_default_models( false );
+        self::ensure_default_model_flag();
+        update_option( 'coachpro_db_version', COACHPRO_VERSION );
+    }
+
     // -------------------------------------------------------------------------
     // Table creation via dbDelta
     // -------------------------------------------------------------------------
@@ -36,7 +48,7 @@ class CoachPro_Activator {
             id VARCHAR(100) NOT NULL,
             display_name VARCHAR(255) NOT NULL,
             provider VARCHAR(100) NOT NULL,
-            provider_type ENUM('openai_compatible','anthropic','lovable') NOT NULL DEFAULT 'openai_compatible',
+            provider_type ENUM('openai_compatible','anthropic','gemini','lovable') NOT NULL DEFAULT 'openai_compatible',
             category ENUM('text','image','reasoning') NOT NULL DEFAULT 'text',
             credits_cost INT NOT NULL DEFAULT 1,
             min_plan ENUM('free','basic','pro') NOT NULL DEFAULT 'free',
@@ -44,6 +56,7 @@ class CoachPro_Activator {
             api_base_url VARCHAR(500) DEFAULT NULL,
             api_model_name VARCHAR(200) DEFAULT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
+            is_default TINYINT(1) NOT NULL DEFAULT 0,
             description TEXT DEFAULT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -60,7 +73,10 @@ class CoachPro_Activator {
             icon VARCHAR(100) NOT NULL DEFAULT 'Bot',
             category VARCHAR(100) DEFAULT NULL,
             is_prebuilt TINYINT(1) NOT NULL DEFAULT 0,
+            provider VARCHAR(100) DEFAULT NULL,
             default_model_id VARCHAR(100) DEFAULT NULL,
+            temperature DECIMAL(4,2) DEFAULT 0.70,
+            max_tokens INT DEFAULT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -295,6 +311,10 @@ class CoachPro_Activator {
                 'icon'          => 'GraduationCap',
                 'category'      => 'Lifestyle',
                 'is_prebuilt'   => 1,
+                'provider'      => 'OpenAI',
+                'default_model_id' => 'gpt-4o-mini',
+                'temperature'   => 0.70,
+                'max_tokens'    => 1024,
                 'is_active'     => 1,
             ),
             array(
@@ -306,6 +326,10 @@ class CoachPro_Activator {
                 'icon'          => 'Building2',
                 'category'      => 'Business',
                 'is_prebuilt'   => 1,
+                'provider'      => 'OpenAI',
+                'default_model_id' => 'gpt-4o-mini',
+                'temperature'   => 0.70,
+                'max_tokens'    => 1024,
                 'is_active'     => 1,
             ),
             array(
@@ -317,6 +341,10 @@ class CoachPro_Activator {
                 'icon'          => 'Lightbulb',
                 'category'      => 'Health',
                 'is_prebuilt'   => 1,
+                'provider'      => 'OpenAI',
+                'default_model_id' => 'gpt-4o-mini',
+                'temperature'   => 0.70,
+                'max_tokens'    => 1024,
                 'is_active'     => 1,
             ),
         );
@@ -324,7 +352,14 @@ class CoachPro_Activator {
             $wpdb->insert( "{$p}coachpro_assistants", $assistant );
         }
 
-        // ---- Default AI Models ----
+        self::seed_default_models();
+        self::ensure_default_model_flag();
+    }
+
+    private static function seed_default_models( bool $replace = true ) {
+        global $wpdb;
+        $p = $wpdb->prefix;
+
         $models = array(
             array(
                 'id'                  => 'gpt-4o-mini',
@@ -338,6 +373,7 @@ class CoachPro_Activator {
                 'api_base_url'        => 'https://api.openai.com/v1',
                 'api_model_name'      => 'gpt-4o-mini',
                 'is_active'           => 1,
+                'is_default'          => 1,
                 'description'         => 'Fast and affordable model for most tasks.',
             ),
             array(
@@ -352,6 +388,7 @@ class CoachPro_Activator {
                 'api_base_url'        => 'https://api.openai.com/v1',
                 'api_model_name'      => 'gpt-4o',
                 'is_active'           => 1,
+                'is_default'          => 0,
                 'description'         => 'Most capable GPT-4 class model.',
             ),
             array(
@@ -366,11 +403,56 @@ class CoachPro_Activator {
                 'api_base_url'        => 'https://api.anthropic.com',
                 'api_model_name'      => 'claude-3-5-haiku-20241022',
                 'is_active'           => 1,
+                'is_default'          => 0,
                 'description'         => 'Fast and affordable Claude model.',
+            ),
+            array(
+                'id'                  => 'gemini-1.5-flash',
+                'display_name'        => 'Gemini 1.5 Flash',
+                'provider'            => 'Google Gemini',
+                'provider_type'       => 'gemini',
+                'category'            => 'text',
+                'credits_cost'        => 1,
+                'min_plan'            => 'free',
+                'api_key_secret_name' => 'coachpro_gemini_key',
+                'api_base_url'        => 'https://generativelanguage.googleapis.com/v1beta',
+                'api_model_name'      => 'gemini-1.5-flash',
+                'is_active'           => 1,
+                'is_default'          => 0,
+                'description'         => 'Google Gemini model for fast everyday responses.',
             ),
         );
         foreach ( $models as $model ) {
-            $wpdb->replace( "{$p}coachpro_ai_models", $model );
+            if ( $replace ) {
+                $wpdb->replace( "{$p}coachpro_ai_models", $model );
+                continue;
+            }
+
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM `{$p}coachpro_ai_models` WHERE id = %s LIMIT 1", $model['id'] ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            if ( ! $exists ) {
+                $wpdb->insert( "{$p}coachpro_ai_models", $model );
+            }
+        }
+    }
+
+    private static function ensure_default_model_flag() {
+        global $wpdb;
+        $table = "{$wpdb->prefix}coachpro_ai_models";
+        $default_id = $wpdb->get_var( "SELECT id FROM `{$table}` WHERE is_default = 1 LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+        if ( $default_id ) {
+            return;
+        }
+
+        $fallback_id = $wpdb->get_var( "SELECT id FROM `{$table}` WHERE is_active = 1 ORDER BY credits_cost ASC, created_at ASC LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        if ( $fallback_id ) {
+            $wpdb->update(
+                $table,
+                array( 'is_default' => 1 ),
+                array( 'id' => $fallback_id ),
+                array( '%d' ),
+                array( '%s' )
+            );
         }
     }
 

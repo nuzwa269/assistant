@@ -33,6 +33,7 @@ foreach ( $tables as $table ) {
 $options = array(
     'coachpro_openai_key',
     'coachpro_anthropic_key',
+    'coachpro_gemini_key',
     'coachpro_openrouter_key',
     'coachpro_jazzcash_no',
     'coachpro_easypaisa_no',

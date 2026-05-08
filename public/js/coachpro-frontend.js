@@ -874,7 +874,7 @@
       projectId: cfg.projectId || '',
       convId: cfg.convId || '',
       assistantId: cfg.assistantId || '',
-      modelId: 'gpt-4o-mini',
+      modelId: cfg.defaultModelId || 'gpt-4o-mini',
       credits: 0,
       projects: [],
       assistants: [],
@@ -929,7 +929,7 @@
 
     function syncModelFromAssistant() {
       var a = selectedAssistant();
-      state.modelId = (a && a.default_model_id) || 'gpt-4o-mini';
+      state.modelId = (a && a.default_model_id) || cfg.defaultModelId || 'gpt-4o-mini';
     }
 
     function refreshSavedMap() {
@@ -1173,7 +1173,7 @@
           }).then(function () {
             return api(cfg, 'chat', 'POST', {
               conversation_id: convRow.id,
-              model_id: state.modelId || 'gpt-4o-mini',
+              model_id: state.modelId || cfg.defaultModelId || 'gpt-4o-mini',
               message: text
             });
           }).then(function (resp) {
@@ -1291,7 +1291,7 @@
 
       api(cfg, 'chat', 'POST', {
         conversation_id: state.convId,
-        model_id:        state.modelId || 'gpt-4o-mini',
+        model_id:        state.modelId || cfg.defaultModelId || 'gpt-4o-mini',
         message:         text,
       }).then(function (resp) {
         state.messages.push({
