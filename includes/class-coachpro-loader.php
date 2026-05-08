@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class CoachPro_Loader {
 
     public function run() {
+        add_action( 'init', array( 'CoachPro_Activator', 'maybe_upgrade' ) );
+
         // Custom roles
         add_action( 'init', array( 'CoachPro_Auth', 'register_roles' ) );
 
@@ -34,6 +36,7 @@ class CoachPro_Loader {
         if ( is_admin() ) {
             add_action( 'admin_menu', array( 'CoachPro_Admin', 'add_menu' ) );
             add_action( 'admin_init', array( 'CoachPro_Admin', 'register_settings' ) );
+            add_action( 'admin_enqueue_scripts', array( 'CoachPro_Admin', 'enqueue_assets' ) );
             add_action( 'admin_post_coachpro_approve_payment', array( 'CoachPro_Admin', 'handle_approve_payment' ) );
             add_action( 'admin_post_coachpro_reject_payment',  array( 'CoachPro_Admin', 'handle_reject_payment' ) );
             add_action( 'admin_post_coachpro_adjust_credits',  array( 'CoachPro_Admin', 'handle_adjust_credits' ) );

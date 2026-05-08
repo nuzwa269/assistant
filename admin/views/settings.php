@@ -11,15 +11,11 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
         <?php settings_fields( 'coachpro_settings_group' ); ?>
 
         <h2><?php esc_html_e( 'AI Provider Keys', 'coachpro-ai' ); ?></h2>
+        <p class="description">
+            <?php esc_html_e( 'Provider API keys and model assignments are now managed from the dedicated AI Providers page.', 'coachpro-ai' ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=coachpro-ai-providers' ) ); ?>"><?php esc_html_e( 'Open AI Providers', 'coachpro-ai' ); ?></a>
+        </p>
         <table class="form-table">
-            <tr>
-                <th><label for="coachpro_openai_key"><?php esc_html_e( 'OpenAI API Key', 'coachpro-ai' ); ?></label></th>
-                <td><input type="password" id="coachpro_openai_key" name="coachpro_openai_key" value="<?php echo esc_attr( get_option( 'coachpro_openai_key' ) ); ?>" class="regular-text" autocomplete="off" /></td>
-            </tr>
-            <tr>
-                <th><label for="coachpro_anthropic_key"><?php esc_html_e( 'Anthropic API Key', 'coachpro-ai' ); ?></label></th>
-                <td><input type="password" id="coachpro_anthropic_key" name="coachpro_anthropic_key" value="<?php echo esc_attr( get_option( 'coachpro_anthropic_key' ) ); ?>" class="regular-text" autocomplete="off" /></td>
-            </tr>
             <tr>
                 <th><label for="coachpro_openrouter_key"><?php esc_html_e( 'OpenRouter API Key', 'coachpro-ai' ); ?></label></th>
                 <td><input type="password" id="coachpro_openrouter_key" name="coachpro_openrouter_key" value="<?php echo esc_attr( get_option( 'coachpro_openrouter_key' ) ); ?>" class="regular-text" autocomplete="off" /></td>

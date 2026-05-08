@@ -250,6 +250,23 @@ class CoachPro_REST_API {
                 'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
             ),
         ) );
+        register_rest_route( self::NS, '/admin/provider-settings', array(
+            array(
+                'methods'             => 'GET',
+                'callback'            => array( 'CoachPro_Admin_API', 'get_provider_settings' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+            array(
+                'methods'             => 'POST',
+                'callback'            => array( 'CoachPro_Admin_API', 'update_provider_settings' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+        ) );
+        register_rest_route( self::NS, '/admin/provider-settings/test', array(
+            'methods'             => 'POST',
+            'callback'            => array( 'CoachPro_Admin_API', 'test_provider_connection' ),
+            'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+        ) );
         register_rest_route( self::NS, '/admin/assistants', array(
             array(
                 'methods'             => 'GET',

@@ -22,8 +22,8 @@ class CoachPro_Chat_API {
         $user_msg   = wp_kses_post( $params['message'] ?? '' );
         $messages   = isset( $params['messages'] ) && is_array( $params['messages'] ) ? $params['messages'] : array();
 
-        if ( empty( $conv_id ) || empty( $model_id ) || empty( $user_msg ) ) {
-            return new WP_Error( 'missing_params', __( 'conversation_id, model_id, and message are required.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        if ( empty( $conv_id ) || empty( $user_msg ) ) {
+            return new WP_Error( 'missing_params', __( 'conversation_id and message are required.', 'coachpro-ai' ), array( 'status' => 400 ) );
         }
 
         // Verify conversation belongs to user
@@ -32,7 +32,24 @@ class CoachPro_Chat_API {
             return new WP_Error( 'forbidden', __( 'Conversation not found.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        // Get model to know credit cost
+        global $wpdb;
+
+        // Build messages array for AI call (get assistant system prompt)
+        $assistant = CoachPro_DB::get_row( 'assistants', $conv['assistant_id'] );
+
+        // Assistant must exist for all users, then access is verified via user_can_use() (includes admin bypass).
+        if ( ! $assistant ) {
+            return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
+        }
+
+        $model_id = self::resolve_model_id( $assistant, $model_id );
+        if ( empty( $model_id ) ) {
+            return new WP_Error( 'invalid_model', __( 'Model not available.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+
         $model = CoachPro_DB::get_row( 'ai_models', $model_id );
         if ( ! $model || ! $model['is_active'] ) {
             return new WP_Error( 'invalid_model', __( 'Model not available.', 'coachpro-ai' ), array( 'status' => 400 ) );
@@ -47,7 +64,6 @@ class CoachPro_Chat_API {
 
         // Save user message
         $user_msg_id = wp_generate_uuid4();
-        global $wpdb;
         $wpdb->insert(
             CoachPro_DB::table( 'messages' ),
             array(
@@ -61,17 +77,6 @@ class CoachPro_Chat_API {
             ),
             array( '%s', '%s', '%d', '%s', '%s', '%s', '%d' )
         );
-
-        // Build messages array for AI call (get assistant system prompt)
-        $assistant = CoachPro_DB::get_row( 'assistants', $conv['assistant_id'] );
-
-        // Assistant must exist for all users, then access is verified via user_can_use() (includes admin bypass).
-        if ( ! $assistant ) {
-            return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
-        }
-        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
-            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
-        }
 
         $ai_messages = array();
 
@@ -100,7 +105,16 @@ class CoachPro_Chat_API {
         }
 
         // Call AI
-        $ai_response = CoachPro_AI_Provider::call( $model_id, $ai_messages, $user_id, $conv_id );
+        $ai_response = CoachPro_AI_Provider::call(
+            $model_id,
+            $ai_messages,
+            $user_id,
+            $conv_id,
+            array(
+                'temperature' => isset( $assistant['temperature'] ) ? (float) $assistant['temperature'] : null,
+                'max_tokens'  => isset( $assistant['max_tokens'] ) ? absint( $assistant['max_tokens'] ) : null,
+            )
+        );
 
         if ( is_wp_error( $ai_response ) ) {
             return $ai_response;
@@ -141,5 +155,23 @@ class CoachPro_Chat_API {
             'credits_used'=> $cost,
             'balance'     => CoachPro_Credits::get_balance( $user_id ),
         ) );
+    }
+
+    private static function resolve_model_id( array $assistant, string $requested_model_id ) : string {
+        if ( $requested_model_id ) {
+            $requested_model = CoachPro_DB::get_row( 'ai_models', $requested_model_id );
+            if ( $requested_model && (int) $requested_model['is_active'] === 1 ) {
+                return $requested_model_id;
+            }
+        }
+
+        if ( ! empty( $assistant['default_model_id'] ) ) {
+            $assistant_model = CoachPro_DB::get_row( 'ai_models', $assistant['default_model_id'] );
+            if ( $assistant_model && (int) $assistant_model['is_active'] === 1 ) {
+                return (string) $assistant['default_model_id'];
+            }
+        }
+
+        return CoachPro_AI_Provider::get_default_model_id();
     }
 }

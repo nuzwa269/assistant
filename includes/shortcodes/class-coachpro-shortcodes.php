@@ -70,6 +70,7 @@ class CoachPro_Shortcodes {
             'wpNonce'        => wp_create_nonce( 'wp_rest' ),
             'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
             'restUrl'        => rest_url( 'coachpro/v1' ),
+            'defaultModelId' => CoachPro_AI_Provider::get_default_model_id(),
             'view'           => $view,
             'theme'          => sanitize_text_field( $atts['theme'] ),
             'projectId'      => sanitize_text_field( $atts['project_id'] ),

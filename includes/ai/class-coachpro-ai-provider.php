@@ -19,7 +19,7 @@ class CoachPro_AI_Provider {
      * @param string $conv_id    Conversation ID (for summary lookup).
      * @return string|WP_Error   AI response text.
      */
-    public static function call( string $model_id, array $messages, int $user_id = 0, string $conv_id = '' ) {
+    public static function call( string $model_id, array $messages, int $user_id = 0, string $conv_id = '', array $options = array() ) {
         global $wpdb;
 
         $model = CoachPro_DB::get_row( 'ai_models', $model_id );
@@ -39,11 +39,14 @@ class CoachPro_AI_Provider {
 
         switch ( $model['provider_type'] ) {
             case 'anthropic':
-                $result = self::call_anthropic( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
+                $result = self::call_anthropic( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
+                break;
+            case 'gemini':
+                $result = self::call_gemini( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
                 break;
             case 'openai_compatible':
             default:
-                $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
+                $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
                 break;
         }
 
@@ -52,10 +55,13 @@ class CoachPro_AI_Provider {
             $messages = self::force_summarize_and_trim( $conv_id, $messages );
             switch ( $model['provider_type'] ) {
                 case 'anthropic':
-                    $result = self::call_anthropic( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
+                    $result = self::call_anthropic( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
+                    break;
+                case 'gemini':
+                    $result = self::call_gemini( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
                     break;
                 default:
-                    $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
+                    $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages, $options );
                     break;
             }
         }
@@ -74,7 +80,35 @@ class CoachPro_AI_Provider {
     // -------------------------------------------------------------------------
     // OpenAI-compatible (also covers OpenRouter)
     // -------------------------------------------------------------------------
-    public static function call_openai_compatible( string $base_url, string $api_key, string $model_name, array $messages ) {
+    public static function get_default_model() : ?array {
+        global $wpdb;
+        $table = CoachPro_DB::table( 'ai_models' );
+        $row   = $wpdb->get_row( "SELECT * FROM `{$table}` WHERE is_active = 1 AND is_default = 1 ORDER BY created_at ASC LIMIT 1", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+        if ( ! $row ) {
+            $row = $wpdb->get_row( "SELECT * FROM `{$table}` WHERE is_active = 1 ORDER BY credits_cost ASC, created_at ASC LIMIT 1", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        }
+
+        return $row ?: null;
+    }
+
+    public static function get_default_model_id() : string {
+        $model = self::get_default_model();
+        return $model['id'] ?? '';
+    }
+
+    public static function call_openai_compatible( string $base_url, string $api_key, string $model_name, array $messages, array $options = array() ) {
+        $body = array(
+            'model'    => $model_name,
+            'messages' => $messages,
+        );
+        if ( isset( $options['temperature'] ) && '' !== $options['temperature'] && null !== $options['temperature'] ) {
+            $body['temperature'] = (float) $options['temperature'];
+        }
+        if ( ! empty( $options['max_tokens'] ) ) {
+            $body['max_tokens'] = absint( $options['max_tokens'] );
+        }
+
         $response = wp_remote_post(
             trailingslashit( $base_url ) . 'chat/completions',
             array(
@@ -83,10 +117,7 @@ class CoachPro_AI_Provider {
                     'Authorization' => 'Bearer ' . $api_key,
                     'Content-Type'  => 'application/json',
                 ),
-                'body'    => wp_json_encode( array(
-                    'model'    => $model_name,
-                    'messages' => $messages,
-                ) ),
+                'body'    => wp_json_encode( $body ),
             )
         );
 
@@ -96,7 +127,7 @@ class CoachPro_AI_Provider {
     // -------------------------------------------------------------------------
     // Anthropic
     // -------------------------------------------------------------------------
-    public static function call_anthropic( string $base_url, string $api_key, string $model_name, array $messages ) {
+    public static function call_anthropic( string $base_url, string $api_key, string $model_name, array $messages, array $options = array() ) {
         // Anthropic expects system message separate from messages array
         $system   = '';
         $filtered = array();
@@ -110,11 +141,14 @@ class CoachPro_AI_Provider {
 
         $body = array(
             'model'      => $model_name,
-            'max_tokens' => 4096,
+            'max_tokens' => ! empty( $options['max_tokens'] ) ? absint( $options['max_tokens'] ) : 4096,
             'messages'   => $filtered,
         );
         if ( $system ) {
             $body['system'] = $system;
+        }
+        if ( isset( $options['temperature'] ) && '' !== $options['temperature'] && null !== $options['temperature'] ) {
+            $body['temperature'] = (float) $options['temperature'];
         }
 
         $response = wp_remote_post(
@@ -131,6 +165,70 @@ class CoachPro_AI_Provider {
         );
 
         return self::parse_anthropic_response( $response );
+    }
+
+    public static function call_gemini( string $base_url, string $api_key, string $model_name, array $messages, array $options = array() ) {
+        $system   = '';
+        $contents = array();
+
+        foreach ( $messages as $message ) {
+            $content = (string) ( $message['content'] ?? '' );
+            if ( '' === $content ) {
+                continue;
+            }
+
+            if ( 'system' === ( $message['role'] ?? '' ) ) {
+                $system = $content;
+                continue;
+            }
+
+            $contents[] = array(
+                'role'  => 'assistant' === ( $message['role'] ?? '' ) ? 'model' : 'user',
+                'parts' => array(
+                    array(
+                        'text' => $content,
+                    ),
+                ),
+            );
+        }
+
+        $body = array(
+            'contents' => $contents,
+        );
+        if ( $system ) {
+            $body['systemInstruction'] = array(
+                'parts' => array(
+                    array(
+                        'text' => $system,
+                    ),
+                ),
+            );
+        }
+
+        $generation_config = array();
+        if ( isset( $options['temperature'] ) && '' !== $options['temperature'] && null !== $options['temperature'] ) {
+            $generation_config['temperature'] = (float) $options['temperature'];
+        }
+        if ( ! empty( $options['max_tokens'] ) ) {
+            $generation_config['maxOutputTokens'] = absint( $options['max_tokens'] );
+        }
+        if ( ! empty( $generation_config ) ) {
+            $body['generationConfig'] = $generation_config;
+        }
+
+        $endpoint = trailingslashit( $base_url ) . 'models/' . rawurlencode( $model_name ) . ':generateContent?key=' . rawurlencode( $api_key );
+        $response = wp_remote_post(
+            $endpoint,
+            array(
+                'timeout' => 60,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                ),
+                'body'    => wp_json_encode( $body ),
+            )
+        );
+
+        return self::parse_gemini_response( $response );
     }
 
     // -------------------------------------------------------------------------
@@ -199,6 +297,8 @@ class CoachPro_AI_Provider {
 
         if ( 'anthropic' === $model['provider_type'] ) {
             $result = self::call_anthropic( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
+        } elseif ( 'gemini' === $model['provider_type'] ) {
+            $result = self::call_gemini( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
         } else {
             $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
         }
@@ -250,5 +350,29 @@ class CoachPro_AI_Provider {
         }
 
         return $body['content'][0]['text'] ?? '';
+    }
+
+    private static function parse_gemini_response( $response ) {
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $code !== 200 ) {
+            $msg = $body['error']['message'] ?? 'Unknown error from Google Gemini.';
+            return new WP_Error( 'ai_error', $msg, array( 'status' => $code ) );
+        }
+
+        $parts = $body['candidates'][0]['content']['parts'] ?? array();
+        $texts = array();
+        foreach ( $parts as $part ) {
+            if ( ! empty( $part['text'] ) ) {
+                $texts[] = $part['text'];
+            }
+        }
+
+        return trim( implode( "\n", $texts ) );
     }
 }
