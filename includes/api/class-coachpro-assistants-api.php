@@ -19,7 +19,7 @@ class CoachPro_Assistants_API {
      * @return bool
      */
     public static function user_can_use( array $assistant, int $user_id ) : bool {
-        if ( current_user_can( 'manage_options' ) ) {
+        if ( user_can( $user_id, 'manage_options' ) ) {
             return true;
         }
         if ( (int) $assistant['is_prebuilt'] === 1 ) {
@@ -143,7 +143,7 @@ class CoachPro_Assistants_API {
             return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
         }
 
-        // Non-admins may only activate: active prebuilt assistants OR their own custom assistants.
+        // user_can_use() includes an admin (manage_options) bypass, so this covers both regular users and admins.
         if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
             return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }

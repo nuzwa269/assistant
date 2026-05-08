@@ -53,15 +53,14 @@ class CoachPro_Conversations_API {
             return new WP_Error( 'forbidden', __( 'Project not found.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        // Verify assistant is accessible: prebuilt+active OR owned by this user (admins bypass)
-        if ( ! current_user_can( 'manage_options' ) ) {
-            $assistant = CoachPro_DB::get_row( 'assistants', $assistant_id );
-            if ( ! $assistant ) {
-                return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
-            }
-            if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
-                return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
-            }
+        // Verify assistant exists and is accessible.
+        // user_can_use() grants admins access to any assistant for their own conversations.
+        $assistant = CoachPro_DB::get_row( 'assistants', $assistant_id );
+        if ( ! $assistant ) {
+            return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
+        }
+        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;
