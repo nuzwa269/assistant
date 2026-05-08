@@ -315,7 +315,7 @@
                   return '<tr>' +
                     '<td><strong>' + escHtml(provider.label) + '</strong></td>' +
                     '<td>' + (provider.configured ? '<code>' + escHtml(provider.masked_key) + '</code>' : 'Not configured') + '</td>' +
-                    '<td><input type="password" class="regular-text" name="provider-' + escHtml(provider.id) + '" placeholder="' + escHtml(provider.masked_key || 'Enter API key') + '" autocomplete="new-password"></td>' +
+                    '<td><input type="password" class="regular-text" name="provider-' + escHtml(provider.id) + '" placeholder="' + escHtml(provider.masked_key || 'Enter API key') + '" autocomplete="off"></td>' +
                     '<td><button type="button" class="button" data-provider-test="' + escHtml(provider.id) + '">Test Connection</button></td>' +
                   '</tr>';
                 }).join('') +

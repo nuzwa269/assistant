@@ -389,9 +389,9 @@ class CoachPro_Admin_API {
         foreach ( $text_fields as $f ) {
             if ( isset( $params[ $f ] ) ) $data[ $f ] = sanitize_text_field( $params[ $f ] );
         }
-        if ( isset( $params['api_base_url'] ) )  $data['api_base_url']  = esc_url_raw( $params['api_base_url'] );
-        if ( isset( $params['credits_cost'] ) )  $data['credits_cost']  = absint( $params['credits_cost'] );
-        if ( isset( $params['is_active'] ) )     $data['is_active']     = (int) ! empty( $params['is_active'] );
+        if ( isset( $params['api_base_url'] ) ) $data['api_base_url'] = esc_url_raw( $params['api_base_url'] );
+        if ( isset( $params['credits_cost'] ) ) $data['credits_cost'] = absint( $params['credits_cost'] );
+        if ( isset( $params['is_active'] ) ) $data['is_active'] = (int) ! empty( $params['is_active'] );
         if ( isset( $params['provider_type'] ) && in_array( $params['provider_type'], array( 'openai_compatible', 'anthropic', 'gemini', 'lovable' ), true ) ) {
             $data['provider_type'] = $params['provider_type'];
         }
@@ -517,7 +517,7 @@ class CoachPro_Admin_API {
         $code = wp_remote_retrieve_response_code( $response );
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
         if ( $code < 200 || $code >= 300 ) {
-            $message = $body['error']['message'] ?? __( 'Connection failed.', 'coachpro-ai' );
+            $message = sanitize_text_field( $body['error']['message'] ?? __( 'Connection failed.', 'coachpro-ai' ) );
             return new WP_Error( 'provider_connection_failed', $message, array( 'status' => $code ?: 502 ) );
         }
 
