@@ -10,41 +10,34 @@
    CSS Custom Properties (theme tokens)
    ============================================================ */
 .coachpro-app {
-  --cp-bg:         #f9fafb;
-  --cp-surface:    #ffffff;
-  --cp-border:     #e5e7eb;
-  --cp-text:       #111827;
-  --cp-muted:      #6b7280;
-  --cp-primary:    #6366f1;
-  --cp-primary-h:  #4f46e5;
-  --cp-danger:     #ef4444;
-  --cp-success:    #10b981;
-  --cp-warning:    #f59e0b;
-  --cp-radius:     8px;
-  --cp-shadow:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
-  --cp-shadow-lg:  0 4px 16px rgba(0,0,0,.12);
-  --cp-font:       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --cp-nav-bg:     #1e1b4b;
-  --cp-nav-text:   #e0e7ff;
-  --cp-nav-active: #6366f1;
-
+  /* Brand colors / tokens (updated) */
+  --cp-bg:           #FAFAFA; /* main background (light) */
+  --cp-surface:      #FFFFFF;
+  --cp-section-bg:   #F3F4F6; /* off-white sections */
+  --cp-bg-dark:      #0A0A0A; /* dark background */
+  --cp-border:       #E5E7EB;
+  --cp-text:         #111827; /* heading text color */
+  --cp-muted:        #4B5563; /* body text muted */
+  --cp-primary:      #FF8A00; /* Primary Orange */
+  --cp-primary-h:    #E67A00; /* Primary Orange hover */
+  --cp-highlight:    #8A2BE2; /* Highlight purple (or #9333EA) */
+  --cp-gradient:     linear-gradient(135deg, #8A2BE2, #4F46E5); /* Vibrant gradient */
+  --cp-danger:       #EF4444;
+  --cp-success:      #10B981;
+  --cp-warning:      #F59E0B;
+  --cp-radius:       8px;
+  --cp-shadow:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --cp-shadow-lg:    0 4px 16px rgba(0,0,0,.12);
+  --cp-heading-font: 'Poppins', 'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --cp-body-font:    'Inter', 'Open Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --cp-font:         var(--cp-body-font);
+  --cp-nav-bg:       #1e1b4b;
+  --cp-nav-text:     #e0e7ff;
+  --cp-nav-active:   var(--cp-highlight);
   font-family: var(--cp-font);
   color: var(--cp-text);
   background: var(--cp-bg);
-  min-height: 400px;
-  box-sizing: border-box;
 }
-
-/* Dark theme */
-.coachpro-app[data-theme="dark"] {
-  --cp-bg:      #0f0f0f;
-  --cp-surface: #1a1a1a;
-  --cp-border:  #2d2d2d;
-  --cp-text:    #f3f4f6;
-  --cp-muted:   #9ca3af;
-  --cp-nav-bg:  #111111;
-}
-
 /* ============================================================
    Reset — scoped
    ============================================================ */
