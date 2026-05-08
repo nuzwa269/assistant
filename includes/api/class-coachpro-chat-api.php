@@ -68,11 +68,9 @@ class CoachPro_Chat_API {
         // Verify the assistant is still accessible to the user.
         if ( ! current_user_can( 'manage_options' ) ) {
             if ( ! $assistant ) {
-                return new WP_Error( 'forbidden', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 403 ) );
+                return new WP_Error( 'not_found', __( 'Assistant not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
             }
-            $is_prebuilt_active = (int) $assistant['is_prebuilt'] === 1 && (int) $assistant['is_active'] === 1;
-            $is_own_custom      = (int) $assistant['is_prebuilt'] === 0 && (int) $assistant['owner_id'] === $user_id;
-            if ( ! $is_prebuilt_active && ! $is_own_custom ) {
+            if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
                 return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
             }
         }

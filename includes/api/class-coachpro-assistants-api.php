@@ -9,6 +9,25 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class CoachPro_Assistants_API {
 
+    /**
+     * Check whether the given user is allowed to use an assistant.
+     * Admins (manage_options) always pass.
+     * Regular users may use: active prebuilt assistants OR their own custom assistants.
+     *
+     * @param array $assistant Row from coachpro_assistants.
+     * @param int   $user_id
+     * @return bool
+     */
+    public static function user_can_use( array $assistant, int $user_id ) : bool {
+        if ( current_user_can( 'manage_options' ) ) {
+            return true;
+        }
+        if ( (int) $assistant['is_prebuilt'] === 1 ) {
+            return (int) $assistant['is_active'] === 1;
+        }
+        return (int) $assistant['owner_id'] === $user_id;
+    }
+
     public static function list_assistants( WP_REST_Request $request ) {
         global $wpdb;
         $user_id = get_current_user_id();
@@ -125,17 +144,8 @@ class CoachPro_Assistants_API {
         }
 
         // Non-admins may only activate: active prebuilt assistants OR their own custom assistants.
-        if ( ! current_user_can( 'manage_options' ) ) {
-            if ( (int) $assistant['is_prebuilt'] === 1 ) {
-                if ( ! (int) $assistant['is_active'] ) {
-                    return new WP_Error( 'forbidden', __( 'This assistant is not available.', 'coachpro-ai' ), array( 'status' => 403 ) );
-                }
-            } else {
-                // Custom assistant: must be owned by the current user.
-                if ( (int) $assistant['owner_id'] !== $user_id ) {
-                    return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
-                }
-            }
+        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         // Check prebuilt activation limit for free users
