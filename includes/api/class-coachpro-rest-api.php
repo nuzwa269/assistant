@@ -304,9 +304,40 @@ class CoachPro_REST_API {
             ),
         ) );
         register_rest_route( self::NS, '/admin/plans/(?P<id>[a-z0-9\-]+)', array(
-            'methods'             => 'PUT',
-            'callback'            => array( 'CoachPro_Admin_API', 'update_plan' ),
-            'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            array(
+                'methods'             => 'PUT',
+                'callback'            => array( 'CoachPro_Admin_API', 'update_plan' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+            array(
+                'methods'             => 'DELETE',
+                'callback'            => array( 'CoachPro_Admin_API', 'delete_plan' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+        ) );
+        register_rest_route( self::NS, '/admin/packs', array(
+            array(
+                'methods'             => 'GET',
+                'callback'            => array( 'CoachPro_Admin_API', 'list_packs' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+            array(
+                'methods'             => 'POST',
+                'callback'            => array( 'CoachPro_Admin_API', 'create_pack' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+        ) );
+        register_rest_route( self::NS, '/admin/packs/(?P<id>[a-z0-9\-]+)', array(
+            array(
+                'methods'             => 'PUT',
+                'callback'            => array( 'CoachPro_Admin_API', 'update_pack' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
+            array(
+                'methods'             => 'DELETE',
+                'callback'            => array( 'CoachPro_Admin_API', 'delete_pack' ),
+                'permission_callback' => array( 'CoachPro_REST_API', 'is_coachpro_admin' ),
+            ),
         ) );
 
         // Google OAuth

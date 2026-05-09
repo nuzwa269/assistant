@@ -89,7 +89,7 @@ class CoachPro_Admin {
         }
 
         $page = sanitize_key( wp_unslash( $_GET['page'] ?? '' ) );
-        if ( ! in_array( $page, array( 'coachpro-assistants', 'coachpro-ai-providers' ), true ) ) {
+        if ( ! in_array( $page, array( 'coachpro-assistants', 'coachpro-ai-providers', 'coachpro-plans' ), true ) ) {
             return;
         }
 
@@ -118,6 +118,7 @@ class CoachPro_Admin {
                 'pageUrls'            => array(
                     'assistants'   => admin_url( 'admin.php?page=coachpro-assistants' ),
                     'ai_providers' => admin_url( 'admin.php?page=coachpro-ai-providers' ),
+                    'plans'        => admin_url( 'admin.php?page=coachpro-plans' ),
                 ),
             )
         );
@@ -134,7 +135,7 @@ class CoachPro_Admin {
         if ( $id ) {
             $req = new WP_REST_Request( 'POST' );
             $req->set_param( 'id', $id );
-            $req->set_body_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
+            $req->set_json_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
             CoachPro_Admin_API::approve_payment( $req );
         }
 
@@ -150,7 +151,7 @@ class CoachPro_Admin {
         if ( $id ) {
             $req = new WP_REST_Request( 'POST' );
             $req->set_param( 'id', $id );
-            $req->set_body_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
+            $req->set_json_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
             CoachPro_Admin_API::reject_payment( $req );
         }
 

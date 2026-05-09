@@ -482,4 +482,323 @@
   if (cfg.page === 'coachpro-ai-providers') {
     initProvidersPage();
   }
+
+  function initPlansPage() {
+    var root = document.getElementById('coachpro-plans-admin');
+    if (!root) {
+      return;
+    }
+
+    var state = {
+      plans: [],
+      packs: [],
+      editingPlanId: '',
+      editingPackId: '',
+      notice: null
+    };
+
+    function currentPlan() {
+      var found = null;
+      (state.plans || []).forEach(function (plan) {
+        if (plan.id === state.editingPlanId) { found = plan; }
+      });
+      return found;
+    }
+
+    function currentPack() {
+      var found = null;
+      (state.packs || []).forEach(function (pack) {
+        if (pack.id === state.editingPackId) { found = pack; }
+      });
+      return found;
+    }
+
+    function render() {
+      var editingPlan = currentPlan() || {};
+      var editingPack = currentPack() || {};
+
+      root.innerHTML = '' +
+        renderNotice(state) +
+
+        // ---- Plans section ----
+        '<div class="coachpro-admin-card">' +
+          '<h2>' + escHtml(state.editingPlanId ? 'Edit subscription plan' : 'Create subscription plan') + '</h2>' +
+          '<form id="coachpro-plan-form" class="coachpro-admin-form">' +
+            '<div class="coachpro-admin-grid">' +
+              '<p><label><strong>ID (slug)</strong><input type="text" name="id" class="regular-text" value="' + escHtml(editingPlan.id || '') + '"' + (state.editingPlanId ? ' readonly' : '') + ' placeholder="e.g. basic"></label></p>' +
+              '<p><label><strong>Name</strong><input type="text" name="name" class="regular-text" value="' + escHtml(editingPlan.name || '') + '" required></label></p>' +
+              '<p><label><strong>Price (PKR)</strong><input type="number" name="price_pkr" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.price_pkr || '0') + '"></label></p>' +
+              '<p><label><strong>Monthly Credits</strong><input type="number" name="monthly_credits" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.monthly_credits || '0') + '"></label></p>' +
+              '<p><label><strong>Max Projects</strong><input type="number" name="max_projects" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_projects || '') + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Max Custom Assistants</strong><input type="number" name="max_custom_assistants" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_custom_assistants || '') + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Max Saved Responses</strong><input type="number" name="max_saved_responses" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_saved_responses || '') + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Sort Order</strong><input type="number" name="sort_order" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.sort_order || '0') + '"></label></p>' +
+              '<p><label><strong>Popular</strong><br><input type="checkbox" name="is_popular"' + (String(editingPlan.is_popular) === '1' ? ' checked' : '') + '> Mark as popular</label></p>' +
+              '<p><label><strong>Active</strong><br><input type="checkbox" name="is_active"' + ((editingPlan.is_active === undefined || String(editingPlan.is_active) === '1') ? ' checked' : '') + '> Available to users</label></p>' +
+            '</div>' +
+            '<p class="submit">' +
+              '<button type="submit" class="button button-primary">' + escHtml(state.editingPlanId ? 'Save plan' : 'Create plan') + '</button> ' +
+              '<button type="button" class="button" id="coachpro-plan-reset">Cancel</button>' +
+            '</p>' +
+          '</form>' +
+        '</div>' +
+        '<div class="coachpro-admin-card">' +
+          '<h2>Subscription Plans</h2>' +
+          '<table class="widefat striped">' +
+            '<thead><tr>' +
+              '<th>ID</th><th>Name</th><th>Price (PKR)</th><th>Credits/mo</th><th>Max Projects</th><th>Max Assistants</th><th>Max Saved</th><th>Popular</th><th>Active</th><th>Actions</th>' +
+            '</tr></thead>' +
+            '<tbody>' +
+              (state.plans.length ? state.plans.map(function (plan) {
+                return '<tr>' +
+                  '<td><code>' + escHtml(plan.id || '') + '</code></td>' +
+                  '<td><strong>' + escHtml(plan.name || '') + '</strong></td>' +
+                  '<td>' + escHtml(plan.price_pkr || '0') + '</td>' +
+                  '<td>' + escHtml(plan.monthly_credits || '0') + '</td>' +
+                  '<td>' + (plan.max_projects === null || plan.max_projects === undefined ? 'Unlimited' : escHtml(plan.max_projects)) + '</td>' +
+                  '<td>' + (plan.max_custom_assistants === null || plan.max_custom_assistants === undefined ? 'Unlimited' : escHtml(plan.max_custom_assistants)) + '</td>' +
+                  '<td>' + (plan.max_saved_responses === null || plan.max_saved_responses === undefined ? 'Unlimited' : escHtml(plan.max_saved_responses)) + '</td>' +
+                  '<td>' + (String(plan.is_popular) === '1' ? '⭐' : '—') + '</td>' +
+                  '<td>' + (String(plan.is_active) === '1' ? '✅ Active' : '❌ Inactive') + '</td>' +
+                  '<td class="coachpro-admin-actions">' +
+                    '<button type="button" class="button button-small" data-plan-action="edit" data-id="' + escHtml(plan.id) + '">Edit</button> ' +
+                    '<button type="button" class="button button-small" data-plan-action="toggle" data-id="' + escHtml(plan.id) + '">' + (String(plan.is_active) === '1' ? 'Deactivate' : 'Activate') + '</button> ' +
+                    '<button type="button" class="button button-small button-link-delete" data-plan-action="delete" data-id="' + escHtml(plan.id) + '">Delete</button>' +
+                  '</td>' +
+                '</tr>';
+              }).join('') : '<tr><td colspan="10">No plans found.</td></tr>') +
+            '</tbody>' +
+          '</table>' +
+        '</div>' +
+
+        // ---- Credit Packs section ----
+        '<div class="coachpro-admin-card">' +
+          '<h2>' + escHtml(state.editingPackId ? 'Edit credit pack' : 'Create credit pack') + '</h2>' +
+          '<form id="coachpro-pack-form" class="coachpro-admin-form">' +
+            '<div class="coachpro-admin-grid">' +
+              '<p><label><strong>Name</strong><input type="text" name="name" class="regular-text" value="' + escHtml(editingPack.name || '') + '" required></label></p>' +
+              '<p><label><strong>Credits</strong><input type="number" name="credits" class="small-text" min="0" step="1" value="' + escHtml(editingPack.credits || '0') + '"></label></p>' +
+              '<p><label><strong>Price (PKR)</strong><input type="number" name="price_pkr" class="small-text" min="0" step="1" value="' + escHtml(editingPack.price_pkr || '0') + '"></label></p>' +
+              '<p><label><strong>Sort Order</strong><input type="number" name="sort_order" class="small-text" min="0" step="1" value="' + escHtml(editingPack.sort_order || '0') + '"></label></p>' +
+              '<p><label><strong>Popular</strong><br><input type="checkbox" name="is_popular"' + (String(editingPack.is_popular) === '1' ? ' checked' : '') + '> Mark as popular</label></p>' +
+              '<p><label><strong>Active</strong><br><input type="checkbox" name="is_active"' + ((editingPack.is_active === undefined || String(editingPack.is_active) === '1') ? ' checked' : '') + '> Available to users</label></p>' +
+            '</div>' +
+            '<p class="submit">' +
+              '<button type="submit" class="button button-primary">' + escHtml(state.editingPackId ? 'Save pack' : 'Create pack') + '</button> ' +
+              '<button type="button" class="button" id="coachpro-pack-reset">Cancel</button>' +
+            '</p>' +
+          '</form>' +
+        '</div>' +
+        '<div class="coachpro-admin-card">' +
+          '<h2>Credit Packs</h2>' +
+          '<table class="widefat striped">' +
+            '<thead><tr>' +
+              '<th>Name</th><th>Credits</th><th>Price (PKR)</th><th>Popular</th><th>Active</th><th>Actions</th>' +
+            '</tr></thead>' +
+            '<tbody>' +
+              (state.packs.length ? state.packs.map(function (pack) {
+                return '<tr>' +
+                  '<td><strong>' + escHtml(pack.name || '') + '</strong></td>' +
+                  '<td>' + escHtml(pack.credits || '0') + '</td>' +
+                  '<td>' + escHtml(pack.price_pkr || '0') + '</td>' +
+                  '<td>' + (String(pack.is_popular) === '1' ? '⭐' : '—') + '</td>' +
+                  '<td>' + (String(pack.is_active) === '1' ? '✅ Active' : '❌ Inactive') + '</td>' +
+                  '<td class="coachpro-admin-actions">' +
+                    '<button type="button" class="button button-small" data-pack-action="edit" data-id="' + escHtml(pack.id) + '">Edit</button> ' +
+                    '<button type="button" class="button button-small" data-pack-action="toggle" data-id="' + escHtml(pack.id) + '">' + (String(pack.is_active) === '1' ? 'Deactivate' : 'Activate') + '</button> ' +
+                    '<button type="button" class="button button-small button-link-delete" data-pack-action="delete" data-id="' + escHtml(pack.id) + '">Delete</button>' +
+                  '</td>' +
+                '</tr>';
+              }).join('') : '<tr><td colspan="6">No credit packs found.</td></tr>') +
+            '</tbody>' +
+          '</table>' +
+        '</div>';
+
+      // Plan form submit
+      root.querySelector('#coachpro-plan-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var formData = new window.FormData(event.target);
+        var payload = {
+          name:                  formData.get('name'),
+          price_pkr:             parseInt(formData.get('price_pkr'), 10) || 0,
+          monthly_credits:       parseInt(formData.get('monthly_credits'), 10) || 0,
+          sort_order:            parseInt(formData.get('sort_order'), 10) || 0,
+          is_popular:            root.querySelector('#coachpro-plan-form [name="is_popular"]').checked ? 1 : 0,
+          is_active:             root.querySelector('#coachpro-plan-form [name="is_active"]').checked ? 1 : 0
+        };
+        var maxProjects    = formData.get('max_projects');
+        var maxAssistants  = formData.get('max_custom_assistants');
+        var maxSaved       = formData.get('max_saved_responses');
+        if (maxProjects !== null && maxProjects !== '')   { payload.max_projects          = parseInt(maxProjects, 10); }
+        if (maxAssistants !== null && maxAssistants !== '') { payload.max_custom_assistants = parseInt(maxAssistants, 10); }
+        if (maxSaved !== null && maxSaved !== '')         { payload.max_saved_responses   = parseInt(maxSaved, 10); }
+
+        var request, successMessage;
+        if (state.editingPlanId) {
+          request        = adminApi('admin/plans/' + encodeURIComponent(state.editingPlanId), 'PUT', payload);
+          successMessage = 'Plan updated.';
+        } else {
+          var planId = (formData.get('id') || '').trim();
+          if (planId) { payload.id = planId; }
+          request        = adminApi('admin/plans', 'POST', payload);
+          successMessage = 'Plan created.';
+        }
+
+        request.then(function () {
+          state.editingPlanId = '';
+          showNotice(state, 'success', successMessage);
+          load();
+        }).catch(function (error) {
+          showNotice(state, 'error', errorMessage(error, 'Unable to save the plan.'));
+          render();
+        });
+      });
+
+      root.querySelector('#coachpro-plan-reset').addEventListener('click', function () {
+        state.editingPlanId = '';
+        state.notice = null;
+        render();
+      });
+
+      Array.prototype.slice.call(root.querySelectorAll('[data-plan-action]')).forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id     = button.getAttribute('data-id');
+          var action = button.getAttribute('data-plan-action');
+          var plan   = null;
+          state.plans.forEach(function (row) { if (row.id === id) { plan = row; } });
+          if (!plan) { return; }
+
+          if (action === 'edit') {
+            state.editingPlanId = id;
+            state.notice = null;
+            render();
+            return;
+          }
+
+          if (action === 'toggle') {
+            adminApi('admin/plans/' + encodeURIComponent(id), 'PUT', {
+              is_active: String(plan.is_active) === '1' ? 0 : 1
+            }).then(function () {
+              showNotice(state, 'success', 'Plan status updated.');
+              load();
+            }).catch(function (error) {
+              showNotice(state, 'error', errorMessage(error, 'Unable to update plan status.'));
+              render();
+            });
+            return;
+          }
+
+          if (action === 'delete' && window.confirm('Delete plan "' + plan.name + '"?')) {
+            adminApi('admin/plans/' + encodeURIComponent(id), 'DELETE').then(function () {
+              if (state.editingPlanId === id) { state.editingPlanId = ''; }
+              showNotice(state, 'success', 'Plan deleted.');
+              load();
+            }).catch(function (error) {
+              showNotice(state, 'error', errorMessage(error, 'Unable to delete the plan.'));
+              render();
+            });
+          }
+        });
+      });
+
+      // Pack form submit
+      root.querySelector('#coachpro-pack-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var formData = new window.FormData(event.target);
+        var payload = {
+          name:       formData.get('name'),
+          credits:    parseInt(formData.get('credits'), 10) || 0,
+          price_pkr:  parseInt(formData.get('price_pkr'), 10) || 0,
+          sort_order: parseInt(formData.get('sort_order'), 10) || 0,
+          is_popular: root.querySelector('#coachpro-pack-form [name="is_popular"]').checked ? 1 : 0,
+          is_active:  root.querySelector('#coachpro-pack-form [name="is_active"]').checked ? 1 : 0
+        };
+
+        var request, successMessage;
+        if (state.editingPackId) {
+          request        = adminApi('admin/packs/' + encodeURIComponent(state.editingPackId), 'PUT', payload);
+          successMessage = 'Pack updated.';
+        } else {
+          request        = adminApi('admin/packs', 'POST', payload);
+          successMessage = 'Pack created.';
+        }
+
+        request.then(function () {
+          state.editingPackId = '';
+          showNotice(state, 'success', successMessage);
+          load();
+        }).catch(function (error) {
+          showNotice(state, 'error', errorMessage(error, 'Unable to save the pack.'));
+          render();
+        });
+      });
+
+      root.querySelector('#coachpro-pack-reset').addEventListener('click', function () {
+        state.editingPackId = '';
+        state.notice = null;
+        render();
+      });
+
+      Array.prototype.slice.call(root.querySelectorAll('[data-pack-action]')).forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id     = button.getAttribute('data-id');
+          var action = button.getAttribute('data-pack-action');
+          var pack   = null;
+          state.packs.forEach(function (row) { if (row.id === id) { pack = row; } });
+          if (!pack) { return; }
+
+          if (action === 'edit') {
+            state.editingPackId = id;
+            state.notice = null;
+            render();
+            return;
+          }
+
+          if (action === 'toggle') {
+            adminApi('admin/packs/' + encodeURIComponent(id), 'PUT', {
+              is_active: String(pack.is_active) === '1' ? 0 : 1
+            }).then(function () {
+              showNotice(state, 'success', 'Pack status updated.');
+              load();
+            }).catch(function (error) {
+              showNotice(state, 'error', errorMessage(error, 'Unable to update pack status.'));
+              render();
+            });
+            return;
+          }
+
+          if (action === 'delete' && window.confirm('Delete pack "' + pack.name + '"?')) {
+            adminApi('admin/packs/' + encodeURIComponent(id), 'DELETE').then(function () {
+              if (state.editingPackId === id) { state.editingPackId = ''; }
+              showNotice(state, 'success', 'Pack deleted.');
+              load();
+            }).catch(function (error) {
+              showNotice(state, 'error', errorMessage(error, 'Unable to delete the pack.'));
+              render();
+            });
+          }
+        });
+      });
+    }
+
+    function load() {
+      return Promise.all([
+        adminApi('admin/plans'),
+        adminApi('admin/packs')
+      ]).then(function (results) {
+        state.plans = results[0] || [];
+        state.packs = results[1] || [];
+        render();
+      }).catch(function (error) {
+        showNotice(state, 'error', errorMessage(error, 'Unable to load plans and packs.'));
+        render();
+      });
+    }
+
+    load();
+  }
+
+  if (cfg.page === 'coachpro-plans') {
+    initPlansPage();
+  }
 }());
