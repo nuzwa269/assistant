@@ -635,12 +635,12 @@
 
         var request, successMessage;
         if (state.editingPlanId) {
-          request        = adminApi('admin/plans/' + encodeURIComponent(state.editingPlanId), 'PUT', payload);
+          request        = adminApi('plans/' + encodeURIComponent(state.editingPlanId), 'PUT', payload);
           successMessage = 'Plan updated.';
         } else {
           var planId = (formData.get('id') || '').trim();
           if (planId) { payload.id = planId; }
-          request        = adminApi('admin/plans', 'POST', payload);
+          request        = adminApi('plans', 'POST', payload);
           successMessage = 'Plan created.';
         }
 
@@ -676,7 +676,7 @@
           }
 
           if (action === 'toggle') {
-            adminApi('admin/plans/' + encodeURIComponent(id), 'PUT', {
+            adminApi('plans/' + encodeURIComponent(id), 'PUT', {
               is_active: String(plan.is_active) === '1' ? 0 : 1
             }).then(function () {
               showNotice(state, 'success', 'Plan status updated.');
@@ -689,7 +689,7 @@
           }
 
           if (action === 'delete' && window.confirm('Delete plan "' + plan.name + '"?')) {
-            adminApi('admin/plans/' + encodeURIComponent(id), 'DELETE').then(function () {
+            adminApi('plans/' + encodeURIComponent(id), 'DELETE').then(function () {
               if (state.editingPlanId === id) { state.editingPlanId = ''; }
               showNotice(state, 'success', 'Plan deleted.');
               load();
@@ -716,10 +716,10 @@
 
         var request, successMessage;
         if (state.editingPackId) {
-          request        = adminApi('admin/packs/' + encodeURIComponent(state.editingPackId), 'PUT', payload);
+          request        = adminApi('packs/' + encodeURIComponent(state.editingPackId), 'PUT', payload);
           successMessage = 'Pack updated.';
         } else {
-          request        = adminApi('admin/packs', 'POST', payload);
+          request        = adminApi('packs', 'POST', payload);
           successMessage = 'Pack created.';
         }
 
@@ -755,7 +755,7 @@
           }
 
           if (action === 'toggle') {
-            adminApi('admin/packs/' + encodeURIComponent(id), 'PUT', {
+            adminApi('packs/' + encodeURIComponent(id), 'PUT', {
               is_active: String(pack.is_active) === '1' ? 0 : 1
             }).then(function () {
               showNotice(state, 'success', 'Pack status updated.');
@@ -768,7 +768,7 @@
           }
 
           if (action === 'delete' && window.confirm('Delete pack "' + pack.name + '"?')) {
-            adminApi('admin/packs/' + encodeURIComponent(id), 'DELETE').then(function () {
+            adminApi('packs/' + encodeURIComponent(id), 'DELETE').then(function () {
               if (state.editingPackId === id) { state.editingPackId = ''; }
               showNotice(state, 'success', 'Pack deleted.');
               load();
@@ -783,8 +783,8 @@
 
     function load() {
       return Promise.all([
-        adminApi('admin/plans'),
-        adminApi('admin/packs')
+        adminApi('plans'),
+        adminApi('packs')
       ]).then(function (results) {
         state.plans = results[0] || [];
         state.packs = results[1] || [];

@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'COACHPRO_VERSION',     '1.1.0' );
+define( 'COACHPRO_VERSION',     '1.1.1' );
 define( 'COACHPRO_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'COACHPRO_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'COACHPRO_PLUGIN_FILE', __FILE__ );
