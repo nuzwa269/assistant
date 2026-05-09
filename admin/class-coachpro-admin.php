@@ -133,10 +133,40 @@ class CoachPro_Admin {
 
         $id = sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) );
         if ( $id ) {
-            $req = new WP_REST_Request( 'POST' );
-            $req->set_param( 'id', $id );
-            $req->set_json_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
-            CoachPro_Admin_API::approve_payment( $req );
+            global $wpdb;
+            $t_pay   = CoachPro_DB::table( 'payments' );
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $payment = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$t_pay}` WHERE id = %s", $id ), ARRAY_A );
+
+            if ( $payment && 'pending' === $payment['status'] ) {
+                $admin_notes = sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) );
+                $wpdb->update(
+                    $t_pay,
+                    array(
+                        'status'      => 'approved',
+                        'reviewed_by' => get_current_user_id(),
+                        'reviewed_at' => current_time( 'mysql' ),
+                        'admin_notes' => $admin_notes,
+                    ),
+                    array( 'id' => $id ),
+                    array( '%s', '%d', '%s', '%s' ),
+                    array( '%s' )
+                );
+                $user_id = (int) $payment['user_id'];
+                if ( 'credit_pack' === $payment['kind'] && $payment['pack_id'] ) {
+                    $pack = CoachPro_DB::get_row( 'credit_packs', $payment['pack_id'] );
+                    if ( $pack ) {
+                        CoachPro_Credits::add( $user_id, (int) $pack['credits'], 'pack_purchase', $id, 'Credit pack purchase approved' );
+                    }
+                } elseif ( 'subscription' === $payment['kind'] && $payment['plan_id'] ) {
+                    $plan = CoachPro_DB::get_row( 'plans', $payment['plan_id'] );
+                    update_user_meta( $user_id, 'coachpro_plan', $payment['plan_id'] );
+                    update_user_meta( $user_id, 'coachpro_plan_renews', gmdate( 'Y-m-d H:i:s', time() + ( 30 * DAY_IN_SECONDS ) ) );
+                    if ( $plan ) {
+                        CoachPro_Credits::add( $user_id, (int) $plan['monthly_credits'], 'subscription_grant', $id, 'Subscription activated: ' . $payment['plan_id'] );
+                    }
+                }
+            }
         }
 
         wp_redirect( admin_url( 'admin.php?page=coachpro-payments&message=approved' ) );
@@ -149,10 +179,25 @@ class CoachPro_Admin {
 
         $id = sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) );
         if ( $id ) {
-            $req = new WP_REST_Request( 'POST' );
-            $req->set_param( 'id', $id );
-            $req->set_json_params( array( 'admin_notes' => sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) ) );
-            CoachPro_Admin_API::reject_payment( $req );
+            global $wpdb;
+            $t_pay   = CoachPro_DB::table( 'payments' );
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $payment = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$t_pay}` WHERE id = %s", $id ), ARRAY_A );
+            if ( $payment && 'pending' === $payment['status'] ) {
+                $admin_notes = sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) );
+                $wpdb->update(
+                    $t_pay,
+                    array(
+                        'status'      => 'rejected',
+                        'reviewed_by' => get_current_user_id(),
+                        'reviewed_at' => current_time( 'mysql' ),
+                        'admin_notes' => $admin_notes,
+                    ),
+                    array( 'id' => $id ),
+                    array( '%s', '%d', '%s', '%s' ),
+                    array( '%s' )
+                );
+            }
         }
 
         wp_redirect( admin_url( 'admin.php?page=coachpro-payments&message=rejected' ) );
