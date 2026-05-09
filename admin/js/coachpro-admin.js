@@ -626,12 +626,12 @@
           is_popular:            root.querySelector('#coachpro-plan-form [name="is_popular"]').checked ? 1 : 0,
           is_active:             root.querySelector('#coachpro-plan-form [name="is_active"]').checked ? 1 : 0
         };
-        var mp = formData.get('max_projects');
-        var ma = formData.get('max_custom_assistants');
-        var ms = formData.get('max_saved_responses');
-        if (mp !== null && mp !== '') { payload.max_projects          = parseInt(mp, 10); }
-        if (ma !== null && ma !== '') { payload.max_custom_assistants = parseInt(ma, 10); }
-        if (ms !== null && ms !== '') { payload.max_saved_responses   = parseInt(ms, 10); }
+        var maxProjects    = formData.get('max_projects');
+        var maxAssistants  = formData.get('max_custom_assistants');
+        var maxSaved       = formData.get('max_saved_responses');
+        if (maxProjects !== null && maxProjects !== '')   { payload.max_projects          = parseInt(maxProjects, 10); }
+        if (maxAssistants !== null && maxAssistants !== '') { payload.max_custom_assistants = parseInt(maxAssistants, 10); }
+        if (maxSaved !== null && maxSaved !== '')         { payload.max_saved_responses   = parseInt(maxSaved, 10); }
 
         var request, successMessage;
         if (state.editingPlanId) {

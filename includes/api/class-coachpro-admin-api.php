@@ -692,7 +692,9 @@ class CoachPro_Admin_API {
     public static function delete_plan( WP_REST_Request $request ) {
         $nonce_check = self::verify_admin_nonce( $request );
         if ( is_wp_error( $nonce_check ) ) return $nonce_check;
-        $id = sanitize_text_field( $request->get_param( 'id' ) );
+        $id  = sanitize_text_field( $request->get_param( 'id' ) );
+        $row = CoachPro_DB::get_row( 'plans', $id );
+        if ( ! $row ) return new WP_Error( 'not_found', 'Plan not found.', array( 'status' => 404 ) );
         global $wpdb;
         $wpdb->delete( CoachPro_DB::table( 'plans' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
@@ -752,7 +754,9 @@ class CoachPro_Admin_API {
     public static function delete_pack( WP_REST_Request $request ) {
         $nonce_check = self::verify_admin_nonce( $request );
         if ( is_wp_error( $nonce_check ) ) return $nonce_check;
-        $id = sanitize_text_field( $request->get_param( 'id' ) );
+        $id  = sanitize_text_field( $request->get_param( 'id' ) );
+        $row = CoachPro_DB::get_row( 'credit_packs', $id );
+        if ( ! $row ) return new WP_Error( 'not_found', 'Pack not found.', array( 'status' => 404 ) );
         global $wpdb;
         $wpdb->delete( CoachPro_DB::table( 'credit_packs' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
