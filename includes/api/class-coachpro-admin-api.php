@@ -688,4 +688,73 @@ class CoachPro_Admin_API {
         $wpdb->update( CoachPro_DB::table( 'plans' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'plans', $id ) );
     }
+
+    public static function delete_plan( WP_REST_Request $request ) {
+        $nonce_check = self::verify_admin_nonce( $request );
+        if ( is_wp_error( $nonce_check ) ) return $nonce_check;
+        $id = sanitize_text_field( $request->get_param( 'id' ) );
+        global $wpdb;
+        $wpdb->delete( CoachPro_DB::table( 'plans' ), array( 'id' => $id ) );
+        return rest_ensure_response( array( 'deleted' => true ) );
+    }
+
+    // -------------------------------------------------------------------------
+    // Credit Packs (admin)
+    // -------------------------------------------------------------------------
+    public static function list_packs( WP_REST_Request $request ) {
+        global $wpdb;
+        $t    = CoachPro_DB::table( 'credit_packs' );
+        $rows = $wpdb->get_results( "SELECT * FROM `{$t}` ORDER BY sort_order ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        return rest_ensure_response( $rows );
+    }
+
+    public static function create_pack( WP_REST_Request $request ) {
+        $nonce_check = self::verify_admin_nonce( $request );
+        if ( is_wp_error( $nonce_check ) ) return $nonce_check;
+        $params = $request->get_json_params();
+        $id     = sanitize_text_field( $params['id'] ?? wp_generate_uuid4() );
+        global $wpdb;
+        $wpdb->replace(
+            CoachPro_DB::table( 'credit_packs' ),
+            array(
+                'id'         => $id,
+                'name'       => sanitize_text_field( $params['name'] ?? '' ),
+                'credits'    => absint( $params['credits'] ?? 0 ),
+                'price_pkr'  => absint( $params['price_pkr'] ?? 0 ),
+                'is_popular' => isset( $params['is_popular'] ) ? (int) $params['is_popular'] : 0,
+                'is_active'  => isset( $params['is_active'] ) ? (int) $params['is_active'] : 1,
+                'sort_order' => absint( $params['sort_order'] ?? 0 ),
+            )
+        );
+        return rest_ensure_response( CoachPro_DB::get_row( 'credit_packs', $id ) );
+    }
+
+    public static function update_pack( WP_REST_Request $request ) {
+        $nonce_check = self::verify_admin_nonce( $request );
+        if ( is_wp_error( $nonce_check ) ) return $nonce_check;
+        $id  = sanitize_text_field( $request->get_param( 'id' ) );
+        $row = CoachPro_DB::get_row( 'credit_packs', $id );
+        if ( ! $row ) return new WP_Error( 'not_found', 'Pack not found.', array( 'status' => 404 ) );
+        $params = $request->get_json_params();
+        $data   = array();
+        if ( isset( $params['name'] ) )       $data['name']       = sanitize_text_field( $params['name'] );
+        if ( isset( $params['credits'] ) )    $data['credits']    = absint( $params['credits'] );
+        if ( isset( $params['price_pkr'] ) )  $data['price_pkr']  = absint( $params['price_pkr'] );
+        if ( isset( $params['is_popular'] ) ) $data['is_popular'] = (int) $params['is_popular'];
+        if ( isset( $params['is_active'] ) )  $data['is_active']  = (int) $params['is_active'];
+        if ( isset( $params['sort_order'] ) ) $data['sort_order'] = absint( $params['sort_order'] );
+        if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
+        global $wpdb;
+        $wpdb->update( CoachPro_DB::table( 'credit_packs' ), $data, array( 'id' => $id ) );
+        return rest_ensure_response( CoachPro_DB::get_row( 'credit_packs', $id ) );
+    }
+
+    public static function delete_pack( WP_REST_Request $request ) {
+        $nonce_check = self::verify_admin_nonce( $request );
+        if ( is_wp_error( $nonce_check ) ) return $nonce_check;
+        $id = sanitize_text_field( $request->get_param( 'id' ) );
+        global $wpdb;
+        $wpdb->delete( CoachPro_DB::table( 'credit_packs' ), array( 'id' => $id ) );
+        return rest_ensure_response( array( 'deleted' => true ) );
+    }
 }
