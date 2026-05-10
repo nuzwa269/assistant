@@ -25,6 +25,8 @@ class CoachPro_Loader {
         // AJAX handlers (auth)
         add_action( 'wp_ajax_nopriv_coachpro_login',        array( 'CoachPro_Auth', 'ajax_login' ) );
         add_action( 'wp_ajax_nopriv_coachpro_register',     array( 'CoachPro_Auth', 'ajax_register' ) );
+        add_action( 'wp_ajax_nopriv_coachpro_forgot_password', array( 'CoachPro_Auth', 'ajax_forgot_password' ) );
+        add_action( 'wp_ajax_coachpro_forgot_password',     array( 'CoachPro_Auth', 'ajax_forgot_password' ) );
         add_action( 'wp_ajax_coachpro_logout',              array( 'CoachPro_Auth', 'ajax_logout' ) );
         add_action( 'wp_ajax_coachpro_check_auth',          array( 'CoachPro_Auth', 'ajax_check_auth' ) );
         add_action( 'wp_ajax_nopriv_coachpro_check_auth',   array( 'CoachPro_Auth', 'ajax_check_auth' ) );

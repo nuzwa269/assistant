@@ -92,6 +92,31 @@ class CoachPro_Auth {
     }
 
     // -------------------------------------------------------------------------
+    // AJAX: Forgot password
+    // -------------------------------------------------------------------------
+    public static function ajax_forgot_password() {
+        check_ajax_referer( 'wp_rest', 'nonce' );
+
+        $email = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
+
+        if ( empty( $email ) || ! is_email( $email ) ) {
+            wp_send_json_error( array( 'message' => __( 'Please enter a valid email address.', 'coachpro-ai' ) ), 400 );
+        }
+
+        $user = get_user_by( 'email', $email );
+        if ( $user ) {
+            $result = retrieve_password( $user->user_login );
+            if ( is_wp_error( $result ) || true !== $result ) {
+                error_log( 'CoachPro forgot password: failed to trigger password reset email for an existing account.' );
+            }
+        }
+
+        wp_send_json_success( array(
+            'message' => __( 'If an account with that email exists, a password reset link has been sent.', 'coachpro-ai' ),
+        ) );
+    }
+
+    // -------------------------------------------------------------------------
     // AJAX: Logout
     // -------------------------------------------------------------------------
     public static function ajax_logout() {

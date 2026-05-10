@@ -85,6 +85,12 @@
       .replace(/"/g, '&quot;');
   }
 
+  function stripHtml(str) {
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(String(str || ''), 'text/html');
+    return (doc.body && doc.body.textContent) ? doc.body.textContent : '';
+  }
+
   function el(tag, cls, html) {
     var d = document.createElement(tag);
     if (cls) d.className = cls;
@@ -93,12 +99,12 @@
   }
 
   function showError(container, msg) {
-    var d = el('div', 'cp-error', escHtml(msg));
+    var d = el('div', 'cp-error', escHtml(stripHtml(msg)));
     container.appendChild(d);
   }
 
   function showSuccess(container, msg) {
-    var d = el('div', 'cp-success', escHtml(msg));
+    var d = el('div', 'cp-success', escHtml(stripHtml(msg)));
     container.appendChild(d);
     setTimeout(function () { d.remove(); }, 4000);
   }
@@ -279,6 +285,27 @@
       card.appendChild(n);
     });
 
+    var forgotLink = el('p', 'cp-auth-switch');
+    var forgotAnchor = el('a', 'cp-link', 'Forgot Password?');
+    forgotAnchor.href = '#';
+    forgotLink.appendChild(forgotAnchor);
+    card.appendChild(forgotLink);
+
+    var forgotWrap = el('div', 'cp-hidden');
+    var forgotHeading = el('h3', 'cp-field-label', 'Reset Password');
+    var forgotEmailInput = input('email', 'you@example.com');
+    forgotEmailInput.autocomplete = 'email';
+    var forgotMsg = el('div', 'cp-error cp-hidden');
+    var forgotSubmitBtn = btn('Send Reset Link', 'cp-btn-outline cp-full');
+    var forgotBack = el('p', 'cp-auth-switch');
+    var forgotBackAnchor = el('a', 'cp-link', 'Back to Login');
+    forgotBackAnchor.href = '#';
+    forgotBack.appendChild(forgotBackAnchor);
+    [forgotHeading, forgotEmailInput, forgotMsg, forgotSubmitBtn, forgotBack].forEach(function (n) {
+      forgotWrap.appendChild(n);
+    });
+    card.appendChild(forgotWrap);
+
     var regLink = el('p', 'cp-auth-switch');
     regLink.innerHTML = 'Don\'t have an account? <a href="#" class="cp-link">Sign up</a>';
     regLink.querySelector('a').addEventListener('click', function (e) {
@@ -326,7 +353,7 @@
               renderView(el_container, cfg);
             }
           } else {
-            errDiv.textContent = data.data.message || 'Login failed. Please check your credentials.';
+            errDiv.textContent = 'Incorrect email or password. Please try again.';
             errDiv.classList.remove('cp-hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = 'Sign In';
@@ -344,6 +371,65 @@
       inp.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); submitBtn.click(); }
       });
+    });
+
+    forgotAnchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      forgotWrap.classList.remove('cp-hidden');
+      forgotMsg.className = 'cp-error cp-hidden';
+      forgotMsg.textContent = '';
+      forgotEmailInput.value = emailInput.value.trim();
+      forgotEmailInput.focus();
+    });
+
+    forgotBackAnchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      forgotWrap.classList.add('cp-hidden');
+      forgotMsg.className = 'cp-error cp-hidden';
+      forgotMsg.textContent = '';
+    });
+
+    forgotSubmitBtn.addEventListener('click', function () {
+      var forgotEmail = forgotEmailInput.value.trim();
+      if (!forgotEmail || !forgotEmailInput.checkValidity()) {
+        forgotMsg.className = 'cp-error';
+        forgotMsg.textContent = 'Please enter a valid email address.';
+        return;
+      }
+
+      forgotSubmitBtn.disabled = true;
+      forgotSubmitBtn.textContent = 'Sending…';
+      forgotMsg.className = 'cp-error cp-hidden';
+      forgotMsg.textContent = '';
+
+      var fd = new FormData();
+      fd.append('action', 'coachpro_forgot_password');
+      fd.append('nonce', cfg.wpNonce);
+      fd.append('email', forgotEmail);
+
+      fetch(cfg.ajaxUrl, { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.success) {
+            forgotMsg.className = 'cp-success';
+            forgotMsg.textContent = '✅ If an account with that email exists, a password reset link has been sent. Please check your inbox.';
+          } else {
+            forgotMsg.className = 'cp-error';
+            forgotMsg.textContent = stripHtml((data && data.data && data.data.message) || 'Unable to send reset link. Please try again.');
+          }
+        })
+        .catch(function () {
+          forgotMsg.className = 'cp-error';
+          forgotMsg.textContent = 'Network error. Please try again.';
+        })
+        .finally(function () {
+          forgotSubmitBtn.disabled = false;
+          forgotSubmitBtn.textContent = 'Send Reset Link';
+        });
+    });
+
+    forgotEmailInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); forgotSubmitBtn.click(); }
     });
   }
 
@@ -468,7 +554,7 @@
               renderView(el_container, cfg);
             }
           } else {
-            errDiv.textContent = data.data.message || 'Registration failed.';
+            errDiv.textContent = stripHtml((data && data.data && data.data.message) || 'Registration failed.');
             errDiv.classList.remove('cp-hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = 'Create Account';
