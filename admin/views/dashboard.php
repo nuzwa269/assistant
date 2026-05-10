@@ -42,29 +42,4 @@ $total_credits  = (int) $wpdb->get_var( "SELECT SUM(amount) FROM `{$t_tx}` WHERE
         &nbsp;
         <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=coachpro-settings' ) ); ?>"><?php esc_html_e( 'Settings', 'coachpro-ai' ); ?></a>
     </p>
-
-    <h2><?php esc_html_e( 'Shortcodes Reference', 'coachpro-ai' ); ?></h2>
-    <table class="widefat striped">
-        <thead><tr><th><?php esc_html_e( 'Shortcode', 'coachpro-ai' ); ?></th><th><?php esc_html_e( 'Description', 'coachpro-ai' ); ?></th></tr></thead>
-        <tbody>
-            <?php
-            $codes = array(
-                '[coachpro]'              => 'Full App (Dashboard)',
-                '[coachpro_dashboard]'    => 'Dashboard view',
-                '[coachpro_chat]'         => 'Chat interface',
-                '[coachpro_projects]'     => 'Projects list',
-                '[coachpro_assistants]'   => 'Assistants manager',
-                '[coachpro_saved]'        => 'Saved responses',
-                '[coachpro_buy_credits]'  => 'Plans & Credit packs',
-                '[coachpro_settings]'     => 'Profile settings',
-                '[coachpro_login]'        => 'Login form',
-                '[coachpro_register]'     => 'Register form',
-                '[coachpro_transactions]' => 'Credit history',
-            );
-            foreach ( $codes as $sc => $desc ) {
-                echo '<tr><td><code>' . esc_html( $sc ) . '</code></td><td>' . esc_html( $desc ) . '</td></tr>';
-            }
-            ?>
-        </tbody>
-    </table>
 </div>
