@@ -90,6 +90,11 @@ class CoachPro_Loader {
             return;
         }
 
+        $should_redirect = apply_filters( 'coachpro_should_redirect_to_login', true, $current_id, $login_page_id, $register_page_id );
+        if ( ! $should_redirect ) {
+            return;
+        }
+
         // Build login URL
         if ( $login_page_id ) {
             $login_url = get_permalink( $login_page_id );
@@ -101,7 +106,11 @@ class CoachPro_Loader {
         if ( ! is_string( $request_uri ) || '' === $request_uri ) {
             $request_uri = '/';
         }
-        $redirect_to = home_url( $request_uri );
+        $request_uri = '/' . ltrim( sanitize_text_field( $request_uri ), '/' );
+        $redirect_to = esc_url_raw( home_url( $request_uri ) );
+        if ( ! $redirect_to ) {
+            $redirect_to = home_url();
+        }
 
         $login_url = add_query_arg( 'redirect_to', urlencode( $redirect_to ), $login_url );
 
