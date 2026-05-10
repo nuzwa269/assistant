@@ -37,7 +37,13 @@ class CoachPro_Shortcodes {
         if ( ! is_user_logged_in() && ! in_array( $view, $public_views, true ) ) {
             // Redirect to login page
             $login_page_id = get_option( 'coachpro_page_login' );
-            $login_url     = $login_page_id ? get_permalink( $login_page_id ) : wp_login_url( get_permalink() );
+            if ( $login_page_id ) {
+                $login_url = get_permalink( $login_page_id );
+            } else {
+                // Try to find a page with slug 'login'
+                $login_page = get_page_by_path( 'login' );
+                $login_url  = $login_page ? get_permalink( $login_page->ID ) : home_url( '/login' );
+            }
             $login_url     = add_query_arg( 'redirect_to', urlencode( get_permalink() ), $login_url );
             wp_redirect( $login_url );
             exit;
