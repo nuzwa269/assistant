@@ -105,7 +105,10 @@ class CoachPro_Auth {
 
         $user = get_user_by( 'email', $email );
         if ( $user ) {
-            retrieve_password( $user->user_login );
+            $result = retrieve_password( $user->user_login );
+            if ( is_wp_error( $result ) || true !== $result ) {
+                error_log( 'CoachPro forgot password: failed to trigger password reset email for an existing account.' );
+            }
         }
 
         wp_send_json_success( array(
