@@ -97,10 +97,11 @@ class CoachPro_Loader {
             $login_url = home_url( '/login' );
         }
 
-        $redirect_to = get_permalink();
-        if ( ! $redirect_to ) {
-            $redirect_to = home_url();
+        $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+        if ( ! is_string( $request_uri ) || '' === $request_uri ) {
+            $request_uri = '/';
         }
+        $redirect_to = home_url( $request_uri );
 
         $login_url = add_query_arg( 'redirect_to', urlencode( $redirect_to ), $login_url );
 
