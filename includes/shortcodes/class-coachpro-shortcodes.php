@@ -44,7 +44,11 @@ class CoachPro_Shortcodes {
                 $login_page = get_page_by_path( 'login' );
                 $login_url  = $login_page ? get_permalink( $login_page->ID ) : home_url( '/login' );
             }
-            $login_url     = add_query_arg( 'redirect_to', urlencode( get_permalink() ), $login_url );
+            $redirect_to   = get_permalink();
+            if ( ! $redirect_to ) {
+                $redirect_to = home_url();
+            }
+            $login_url     = add_query_arg( 'redirect_to', $redirect_to, $login_url );
             wp_redirect( $login_url );
             exit;
         }

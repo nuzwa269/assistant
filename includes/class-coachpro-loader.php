@@ -106,13 +106,15 @@ class CoachPro_Loader {
         if ( ! is_string( $request_uri ) || '' === $request_uri ) {
             $request_uri = '/';
         }
-        $request_uri = '/' . ltrim( sanitize_text_field( $request_uri ), '/' );
+        if ( 0 !== strpos( $request_uri, '/' ) ) {
+            $request_uri = '/' . $request_uri;
+        }
         $redirect_to = esc_url_raw( home_url( $request_uri ) );
         if ( ! $redirect_to ) {
             $redirect_to = home_url();
         }
 
-        $login_url = add_query_arg( 'redirect_to', urlencode( $redirect_to ), $login_url );
+        $login_url = add_query_arg( 'redirect_to', $redirect_to, $login_url );
 
         wp_safe_redirect( $login_url );
         exit;
