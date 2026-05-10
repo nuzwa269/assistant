@@ -53,6 +53,23 @@ class CoachPro_Admin {
         foreach ( $settings as $key ) {
             register_setting( 'coachpro_settings_group', $key, array( 'sanitize_callback' => 'sanitize_text_field' ) );
         }
+
+        $page_settings = array(
+            'coachpro_page_login',
+            'coachpro_page_register',
+            'coachpro_page_dashboard',
+            'coachpro_page_chat',
+            'coachpro_page_projects',
+            'coachpro_page_assistants',
+            'coachpro_page_saved',
+            'coachpro_page_buy_credits',
+            'coachpro_page_settings',
+            'coachpro_page_transactions',
+            'coachpro_page_help',
+        );
+        foreach ( $page_settings as $key ) {
+            register_setting( 'coachpro_settings_group', $key, array( 'sanitize_callback' => 'absint' ) );
+        }
     }
 
     // -------------------------------------------------------------------------
