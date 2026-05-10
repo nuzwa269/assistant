@@ -48,6 +48,10 @@ class CoachPro_Shortcodes {
             if ( ! is_string( $request_uri ) || '' === $request_uri ) {
                 $request_uri = '/';
             }
+            $request_uri = esc_url_raw( $request_uri );
+            if ( '' === $request_uri ) {
+                $request_uri = '/';
+            }
             $request_parts = wp_parse_url( $request_uri );
             $request_path  = isset( $request_parts['path'] ) && is_string( $request_parts['path'] ) ? $request_parts['path'] : '/';
             $request_query = isset( $request_parts['query'] ) && is_string( $request_parts['query'] ) ? $request_parts['query'] : '';

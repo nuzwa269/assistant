@@ -90,6 +90,14 @@ class CoachPro_Loader {
             return;
         }
 
+        /**
+         * Filter whether unauthenticated users should be redirected to the CoachPro login page.
+         *
+         * @param bool $should_redirect  Whether to redirect.
+         * @param int  $current_id       Current queried object ID.
+         * @param int  $login_page_id    CoachPro login page ID.
+         * @param int  $register_page_id CoachPro register page ID.
+         */
         $should_redirect = apply_filters( 'coachpro_should_redirect_to_login', true, $current_id, $login_page_id, $register_page_id );
         if ( ! $should_redirect ) {
             return;
@@ -104,6 +112,10 @@ class CoachPro_Loader {
 
         $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
         if ( ! is_string( $request_uri ) || '' === $request_uri ) {
+            $request_uri = '/';
+        }
+        $request_uri = esc_url_raw( $request_uri );
+        if ( '' === $request_uri ) {
             $request_uri = '/';
         }
         $request_parts = wp_parse_url( $request_uri );
