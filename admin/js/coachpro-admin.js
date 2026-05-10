@@ -56,6 +56,9 @@
     if (value === 'gemini' || value === 'google' || value === 'google gemini' || value === 'google-gemini') {
       return 'gemini';
     }
+    if (value === 'custom' || value === 'other' || value === 'custom / other' || value === 'custom/other') {
+      return 'custom';
+    }
     return '';
   }
 
@@ -302,6 +305,31 @@
     function render() {
       var editing = currentModel() || {};
       var providers = state.providerSettings.providers || [];
+      var editingProviderKey = normalizeProvider(editing.provider || '');
+      var selectedProviderName = editing.provider || '';
+      var selectedProviderKey = normalizeProvider(selectedProviderName);
+      var selectedProviderDef = selectedProviderKey ? providerDefinitions()[selectedProviderKey] : null;
+      var isUnknownEditingProvider = !!editing.provider && (!selectedProviderKey || !selectedProviderDef);
+      var customProviderDef = providerDefinitions().custom || null;
+
+      if (isUnknownEditingProvider && customProviderDef) {
+        selectedProviderName = customProviderDef.label;
+        selectedProviderKey = 'custom';
+      }
+
+      var customProviderLabelValue = '';
+      if (selectedProviderKey === 'custom') {
+        if (isUnknownEditingProvider) {
+          customProviderLabelValue = editing.provider || '';
+        } else if (editingProviderKey === 'custom' && editing.provider && editing.provider !== 'Custom') {
+          customProviderLabelValue = editing.provider;
+        }
+      }
+
+      var customProtocolValue = editing.provider_type || 'openai_compatible';
+      if (customProtocolValue !== 'openai_compatible' && customProtocolValue !== 'anthropic' && customProtocolValue !== 'gemini') {
+        customProtocolValue = 'openai_compatible';
+      }
 
       root.innerHTML = '' +
         renderNotice(state) +
@@ -312,10 +340,19 @@
               '<thead><tr><th>Provider</th><th>Saved key</th><th>New key</th><th>Test Connection</th></tr></thead>' +
               '<tbody>' +
                 providers.map(function (provider) {
+                  var providerLabel = provider.id === 'custom'
+                    ? 'Custom / Other (OpenRouter, Mistral, Ollama, etc.)'
+                    : provider.label;
+                  var showBaseUrl = provider.requires_base_url || provider.id === 'custom';
                   return '<tr>' +
-                    '<td><strong>' + escHtml(provider.label) + '</strong></td>' +
+                    '<td><strong>' + escHtml(providerLabel) + '</strong></td>' +
                     '<td>' + (provider.configured ? '<code>' + escHtml(provider.masked_key) + '</code>' : 'Not configured') + '</td>' +
-                    '<td><input type="password" class="regular-text" name="provider-' + escHtml(provider.id) + '" placeholder="' + escHtml(provider.masked_key || 'Enter API key') + '" autocomplete="off"></td>' +
+                    '<td>' +
+                      '<input type="password" class="regular-text" name="provider-' + escHtml(provider.id) + '" placeholder="' + escHtml(provider.masked_key || 'Enter API key') + '" autocomplete="off">' +
+                      (showBaseUrl
+                        ? '<p><label><small>Base URL</small><br><input type="text" class="regular-text" name="provider-' + escHtml(provider.id) + '-base_url" placeholder="https://example.com/v1" value="' + escHtml(provider.base_url || '') + '"></label></p>'
+                        : '') +
+                    '</td>' +
                     '<td><button type="button" class="button" data-provider-test="' + escHtml(provider.id) + '">Test Connection</button></td>' +
                   '</tr>';
                 }).join('') +
@@ -329,11 +366,24 @@
           '<p class="description">Exactly one model should be the global default. Current default: <strong>' + escHtml(state.providerSettings.default_model_id || cfg.defaultModelId || 'Not configured') + '</strong>.</p>' +
           '<form id="coachpro-model-form" class="coachpro-admin-form">' +
             '<div class="coachpro-admin-grid">' +
-              '<p><label><strong>Provider</strong><select name="provider_name">' + providerOptions(editing.provider || '') + '</select></label></p>' +
+              '<p><label><strong>Provider</strong><select name="provider_name">' + providerOptions(selectedProviderName) + '</select></label></p>' +
               '<p><label><strong>Model ID</strong><input type="text" name="model_id" class="regular-text" value="' + escHtml(editing.id || '') + '"' + (state.editingId ? ' readonly' : ' required') + '></label></p>' +
               '<p><label><strong>Display name</strong><input type="text" name="display_name" class="regular-text" value="' + escHtml(editing.display_name || '') + '" required></label></p>' +
               '<p><label><strong>Active</strong><br><input type="checkbox" name="is_active"' + ((editing.is_active === undefined || String(editing.is_active) === '1') ? ' checked' : '') + '> Model can be used</label></p>' +
               '<p><label><strong>Default model</strong><br><input type="checkbox" name="is_default"' + (String(editing.is_default) === '1' ? ' checked' : '') + '> Use as the global fallback</label></p>' +
+            '</div>' +
+            '<div id="coachpro-custom-model-fields" style="display:' + (selectedProviderKey === 'custom' ? 'block' : 'none') + ';">' +
+              '<div class="coachpro-admin-grid">' +
+                '<p><label><strong>Custom Provider Label</strong><input type="text" name="custom_provider_label" class="regular-text" value="' + escHtml(customProviderLabelValue) + '" placeholder="OpenRouter"></label></p>' +
+                '<p><label><strong>API Base URL</strong><input type="text" name="api_base_url" class="regular-text" value="' + escHtml(editing.api_base_url || '') + '" placeholder="https://openrouter.ai/api/v1"></label></p>' +
+                '<p><label><strong>API Key Option Name</strong><input type="text" name="api_key_secret_name" class="regular-text" value="' + escHtml(editing.api_key_secret_name || 'coachpro_custom_key') + '"></label></p>' +
+                '<p><label><strong>API Model Name</strong><input type="text" name="api_model_name" class="regular-text" value="' + escHtml(editing.api_model_name || '') + '"></label></p>' +
+                '<p><label><strong>Protocol</strong><select name="provider_type">' +
+                  '<option value="openai_compatible"' + (customProtocolValue === 'openai_compatible' ? ' selected' : '') + '>openai_compatible</option>' +
+                  '<option value="anthropic"' + (customProtocolValue === 'anthropic' ? ' selected' : '') + '>anthropic</option>' +
+                  '<option value="gemini"' + (customProtocolValue === 'gemini' ? ' selected' : '') + '>gemini</option>' +
+                '</select></label></p>' +
+              '</div>' +
             '</div>' +
             '<p class="submit">' +
               '<button type="submit" class="button button-primary">' + escHtml(state.editingId ? 'Save model' : 'Add model') + '</button> ' +
@@ -369,6 +419,10 @@
         providers.forEach(function (provider) {
           var input = root.querySelector('[name="provider-' + provider.id + '"]');
           payload.providers[provider.id] = { api_key: input ? input.value.trim() : '' };
+          if (provider.requires_base_url || provider.id === 'custom') {
+            var baseInput = root.querySelector('[name="provider-' + provider.id + '-base_url"]');
+            payload.providers[provider.id].base_url = baseInput ? baseInput.value.trim() : '';
+          }
         });
 
         adminApi('provider-settings', 'POST', payload).then(function (response) {
@@ -405,6 +459,14 @@
           is_default: root.querySelector('[name="is_default"]').checked ? 1 : 0
         };
 
+        if (normalizeProvider(formData.get('provider_name')) === 'custom') {
+          payload.custom_provider_label = formData.get('custom_provider_label');
+          payload.api_base_url = formData.get('api_base_url');
+          payload.api_key_secret_name = formData.get('api_key_secret_name');
+          payload.api_model_name = formData.get('api_model_name');
+          payload.provider_type = formData.get('provider_type');
+        }
+
         if (!state.editingId) {
           payload.model_id = formData.get('model_id');
         }
@@ -422,6 +484,17 @@
           render();
         });
       });
+
+      var providerSelect = root.querySelector('#coachpro-model-form [name="provider_name"]');
+      if (providerSelect) {
+        providerSelect.addEventListener('change', function () {
+          var customFields = root.querySelector('#coachpro-custom-model-fields');
+          if (!customFields) {
+            return;
+          }
+          customFields.style.display = normalizeProvider(providerSelect.value) === 'custom' ? 'block' : 'none';
+        });
+      }
 
       root.querySelector('#coachpro-model-reset').addEventListener('click', function () {
         state.editingId = '';

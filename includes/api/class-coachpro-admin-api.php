@@ -36,6 +36,15 @@ class CoachPro_Admin_API {
                 'api_key_option' => 'coachpro_gemini_key',
                 'api_base_url'   => 'https://generativelanguage.googleapis.com/v1beta',
             ),
+            'custom' => array(
+                'id'                => 'custom',
+                'label'             => 'Custom / Other',
+                'provider'          => 'Custom',
+                'provider_type'     => 'openai_compatible',
+                'api_key_option'    => 'coachpro_custom_key',
+                'api_base_url'      => '',
+                'requires_base_url' => true,
+            ),
         );
     }
 
@@ -63,6 +72,9 @@ class CoachPro_Admin_API {
         }
         if ( in_array( $normalized, array( 'gemini', 'google', 'google gemini', 'google-gemini' ), true ) ) {
             return 'gemini';
+        }
+        if ( in_array( $normalized, array( 'custom', 'other', 'custom / other', 'custom/other' ), true ) ) {
+            return 'custom';
         }
 
         return '';
@@ -129,9 +141,35 @@ class CoachPro_Admin_API {
 
     private static function apply_model_provider_defaults( array $params, array $data ) : array {
         $provider = $params['provider_name'] ?? $params['provider'] ?? $data['provider'] ?? '';
+        $key      = self::normalize_provider_key( (string) $provider );
         $def      = self::get_provider_definition( (string) $provider );
 
         if ( empty( $def ) ) {
+            return $data;
+        }
+
+        if ( 'custom' === $key ) {
+            $custom_label = sanitize_text_field( (string) ( $params['custom_provider_label'] ?? '' ) );
+            if ( '' !== $custom_label ) {
+                $data['provider'] = $custom_label;
+            } elseif ( empty( $data['provider'] ) || 'custom' === self::normalize_provider_key( (string) $data['provider'] ) ) {
+                $data['provider'] = $def['provider'];
+            }
+
+            $provider_type = $params['provider_type'] ?? $data['provider_type'] ?? $def['provider_type'];
+            if ( ! in_array( $provider_type, array( 'openai_compatible', 'anthropic', 'gemini', 'lovable' ), true ) ) {
+                $provider_type = 'openai_compatible';
+            }
+
+            $data['provider_type']       = $provider_type;
+            $data['api_key_secret_name'] = sanitize_text_field( (string) ( $params['api_key_secret_name'] ?? $data['api_key_secret_name'] ?? '' ) );
+            $data['api_base_url']        = esc_url_raw( (string) ( $params['api_base_url'] ?? $data['api_base_url'] ?? '' ) );
+            $data['api_model_name']      = sanitize_text_field( (string) ( $params['api_model_name'] ?? $data['api_model_name'] ?? '' ) );
+
+            if ( '' === $data['api_key_secret_name'] ) {
+                $data['api_key_secret_name'] = $def['api_key_option'];
+            }
+
             return $data;
         }
 
@@ -148,11 +186,13 @@ class CoachPro_Admin_API {
         foreach ( self::get_provider_definitions() as $definition ) {
             $api_key     = (string) get_option( $definition['api_key_option'], '' );
             $providers[] = array(
-                'id'          => $definition['id'],
-                'label'       => $definition['label'],
-                'configured'  => '' !== $api_key,
-                'masked_key'  => '' !== $api_key ? self::mask_api_key( $api_key ) : '',
-                'option_name' => $definition['api_key_option'],
+                'id'                => $definition['id'],
+                'label'             => $definition['label'],
+                'configured'        => '' !== $api_key,
+                'masked_key'        => '' !== $api_key ? self::mask_api_key( $api_key ) : '',
+                'option_name'       => $definition['api_key_option'],
+                'requires_base_url' => ! empty( $definition['requires_base_url'] ),
+                'base_url'          => 'custom' === $definition['id'] ? (string) get_option( 'coachpro_custom_base_url', '' ) : '',
             );
         }
 
@@ -454,6 +494,7 @@ class CoachPro_Admin_API {
                 update_option( $definition['api_key_option'], sanitize_text_field( $api_key ), false );
             }
         }
+        update_option( 'coachpro_custom_base_url', esc_url_raw( trim( (string) ( $providers['custom']['base_url'] ?? '' ) ) ), false );
 
         return rest_ensure_response( self::get_provider_settings_response() );
     }
@@ -493,6 +534,21 @@ class CoachPro_Admin_API {
                     trailingslashit( $definition['api_base_url'] ) . 'models?key=' . rawurlencode( $api_key ),
                     array(
                         'timeout' => 20,
+                    )
+                );
+                break;
+            case 'custom':
+                $base_url = (string) get_option( 'coachpro_custom_base_url', '' );
+                if ( empty( $base_url ) ) {
+                    return new WP_Error( 'missing_base_url', __( 'Save a Base URL for the Custom provider before testing.', 'coachpro-ai' ), array( 'status' => 400 ) );
+                }
+                $response = wp_remote_get(
+                    trailingslashit( $base_url ) . 'models',
+                    array(
+                        'timeout' => 20,
+                        'headers' => array(
+                            'Authorization' => 'Bearer ' . $api_key,
+                        ),
                     )
                 );
                 break;
