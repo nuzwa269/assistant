@@ -37,8 +37,31 @@ class CoachPro_Shortcodes {
         if ( ! is_user_logged_in() && ! in_array( $view, $public_views, true ) ) {
             // Redirect to login page
             $login_page_id = get_option( 'coachpro_page_login' );
-            $login_url     = $login_page_id ? get_permalink( $login_page_id ) : wp_login_url( get_permalink() );
-            $login_url     = add_query_arg( 'redirect_to', urlencode( get_permalink() ), $login_url );
+            if ( $login_page_id ) {
+                $login_url = get_permalink( $login_page_id );
+            } else {
+                // Try to find a page with slug 'login'
+                $login_page = get_page_by_path( 'login' );
+                $login_url  = $login_page ? get_permalink( $login_page->ID ) : home_url( '/login' );
+            }
+            $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+            if ( ! is_string( $request_uri ) || '' === $request_uri ) {
+                $request_uri = '/';
+            }
+            $request_uri = esc_url_raw( $request_uri );
+            if ( '' === $request_uri ) {
+                $request_uri = '/';
+            }
+            $request_parts = wp_parse_url( $request_uri );
+            $request_path  = isset( $request_parts['path'] ) && is_string( $request_parts['path'] ) ? $request_parts['path'] : '/';
+            $request_query = isset( $request_parts['query'] ) && is_string( $request_parts['query'] ) ? $request_parts['query'] : '';
+            $request_path  = '/' . ltrim( $request_path, '/' );
+            $request_uri   = $request_query ? $request_path . '?' . $request_query : $request_path;
+            $redirect_to   = esc_url_raw( home_url( $request_uri ) );
+            if ( ! $redirect_to ) {
+                $redirect_to = home_url();
+            }
+            $login_url     = add_query_arg( 'redirect_to', $redirect_to, $login_url );
             wp_redirect( $login_url );
             exit;
         }
