@@ -11,6 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class CoachPro_Auth {
 
     // -------------------------------------------------------------------------
+    // Helper: build redirect_uri using the CURRENT host (supports subdomains)
+    // -------------------------------------------------------------------------
+    private static function google_callback_uri() {
+        $host        = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : parse_url( home_url(), PHP_URL_HOST );
+        $rest_prefix = rest_get_url_prefix(); // usually 'wp-json'
+        return set_url_scheme( 'https://' . $host . '/' . $rest_prefix . '/coachpro/v1/auth/google/callback' );
+    }
+
+    // -------------------------------------------------------------------------
     // Role registration (called on 'init')
     // -------------------------------------------------------------------------
     public static function register_roles() {
@@ -156,7 +165,8 @@ class CoachPro_Auth {
             return new WP_Error( 'google_not_configured', 'Google Sign-In is not configured.', array( 'status' => 501 ) );
         }
 
-        $redirect_uri = rest_url( 'coachpro/v1/auth/google/callback' );
+        // Use current host so subdomain (e.g. studio.coachproai.com) is always used
+        $redirect_uri = self::google_callback_uri();
         $redirect_to  = esc_url_raw( $request->get_param( 'redirect' ) ?: home_url() );
         $state        = wp_create_nonce( 'coachpro_google_oauth' ) . '|' . $redirect_to;
         $params       = http_build_query( array(
@@ -195,7 +205,9 @@ class CoachPro_Auth {
 
         $client_id     = get_option( 'coachpro_google_client_id', '' );
         $client_secret = get_option( 'coachpro_google_client_secret', '' );
-        $redirect_uri  = rest_url( 'coachpro/v1/auth/google/callback' );
+
+        // Must match exactly what was sent during the OAuth initiation
+        $redirect_uri  = self::google_callback_uri();
 
         $token_resp = wp_remote_post( 'https://oauth2.googleapis.com/token', array(
             'body' => array(
