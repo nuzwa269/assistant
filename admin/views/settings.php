@@ -79,6 +79,52 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
             </tr>
         </table>
 
+        <h2><?php esc_html_e( 'Page Assignments', 'coachpro-ai' ); ?></h2>
+        <p class="description">
+            <?php esc_html_e( 'Assign WordPress pages to each CoachPro view. Make sure each page contains the correct shortcode.', 'coachpro-ai' ); ?>
+        </p>
+        <table class="form-table">
+            <?php
+            $page_assignments = array(
+                'coachpro_page_login'        => array( 'label' => __( 'Login Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_login]' ),
+                'coachpro_page_register'     => array( 'label' => __( 'Register Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_register]' ),
+                'coachpro_page_dashboard'    => array( 'label' => __( 'Dashboard Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_dashboard]' ),
+                'coachpro_page_chat'         => array( 'label' => __( 'Chat Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_chat]' ),
+                'coachpro_page_projects'     => array( 'label' => __( 'Projects Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_projects]' ),
+                'coachpro_page_assistants'   => array( 'label' => __( 'Assistants Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_assistants]' ),
+                'coachpro_page_saved'        => array( 'label' => __( 'Saved Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_saved]' ),
+                'coachpro_page_buy_credits'  => array( 'label' => __( 'Buy Credits Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_buy_credits]' ),
+                'coachpro_page_settings'     => array( 'label' => __( 'Settings Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_settings]' ),
+                'coachpro_page_transactions' => array( 'label' => __( 'Transactions Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_transactions]' ),
+                'coachpro_page_help'         => array( 'label' => __( 'Help Page', 'coachpro-ai' ), 'shortcode' => '[coachpro_help]' ),
+            );
+            foreach ( $page_assignments as $option_key => $assignment ) :
+                ?>
+                <tr>
+                    <th><label for="<?php echo esc_attr( $option_key ); ?>"><?php echo esc_html( $assignment['label'] ); ?></label></th>
+                    <td>
+                        <?php
+                        wp_dropdown_pages(
+                            array(
+                                'name'              => $option_key,
+                                'id'                => $option_key,
+                                'selected'          => absint( get_option( $option_key, 0 ) ),
+                                'show_option_none'  => __( '— Select a page —', 'coachpro-ai' ),
+                                'option_none_value' => 0,
+                            )
+                        );
+                        ?>
+                        <p class="description">
+                            <?php
+                            /* translators: %s: shortcode name. */
+                            printf( esc_html__( 'Page with %s shortcode.', 'coachpro-ai' ), esc_html( $assignment['shortcode'] ) );
+                            ?>
+                        </p>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </table>
+
         <?php submit_button(); ?>
     </form>
 </div>
