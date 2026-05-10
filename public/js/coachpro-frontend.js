@@ -86,9 +86,9 @@
   }
 
   function stripHtml(str) {
-    var tmp = document.createElement('div');
-    tmp.innerHTML = str || '';
-    return tmp.textContent || tmp.innerText || '';
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(String(str || ''), 'text/html');
+    return (doc.body && doc.body.textContent) ? doc.body.textContent : '';
   }
 
   function el(tag, cls, html) {
@@ -286,7 +286,9 @@
     });
 
     var forgotLink = el('p', 'cp-auth-switch');
-    forgotLink.innerHTML = '<a href="#" class="cp-link">Forgot Password?</a>';
+    var forgotAnchor = el('a', 'cp-link', 'Forgot Password?');
+    forgotAnchor.href = '#';
+    forgotLink.appendChild(forgotAnchor);
     card.appendChild(forgotLink);
 
     var forgotWrap = el('div', 'cp-hidden');
@@ -296,7 +298,9 @@
     var forgotMsg = el('div', 'cp-error cp-hidden');
     var forgotSubmitBtn = btn('Send Reset Link', 'cp-btn-outline cp-full');
     var forgotBack = el('p', 'cp-auth-switch');
-    forgotBack.innerHTML = '<a href="#" class="cp-link">Back to Login</a>';
+    var forgotBackAnchor = el('a', 'cp-link', 'Back to Login');
+    forgotBackAnchor.href = '#';
+    forgotBack.appendChild(forgotBackAnchor);
     [forgotHeading, forgotEmailInput, forgotMsg, forgotSubmitBtn, forgotBack].forEach(function (n) {
       forgotWrap.appendChild(n);
     });
@@ -369,7 +373,7 @@
       });
     });
 
-    forgotLink.querySelector('a').addEventListener('click', function (e) {
+    forgotAnchor.addEventListener('click', function (e) {
       e.preventDefault();
       forgotWrap.classList.remove('cp-hidden');
       forgotMsg.className = 'cp-error cp-hidden';
@@ -378,7 +382,7 @@
       forgotEmailInput.focus();
     });
 
-    forgotBack.querySelector('a').addEventListener('click', function (e) {
+    forgotBackAnchor.addEventListener('click', function (e) {
       e.preventDefault();
       forgotWrap.classList.add('cp-hidden');
       forgotMsg.className = 'cp-error cp-hidden';
@@ -387,7 +391,7 @@
 
     forgotSubmitBtn.addEventListener('click', function () {
       var forgotEmail = forgotEmailInput.value.trim();
-      if (!forgotEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
+      if (!forgotEmail || !forgotEmailInput.checkValidity()) {
         forgotMsg.className = 'cp-error';
         forgotMsg.textContent = 'Please enter a valid email address.';
         return;
