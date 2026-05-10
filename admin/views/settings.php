@@ -18,7 +18,7 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
         <table class="form-table">
             <tr>
                 <th><label for="coachpro_openrouter_key"><?php esc_html_e( 'OpenRouter API Key', 'coachpro-ai' ); ?></label></th>
-                <td><input type="password" id="coachpro_openrouter_key" name="coachpro_openrouter_key" value="<?php echo esc_attr( get_option( 'coachpro_openrouter_key' ) ); ?>" class="regular-text" autocomplete="off" /></td>
+                <td><input type="password" id="coachpro_openrouter_key" name="coachpro_openrouter_key" value="<?php echo esc_attr( get_option( 'coachpro_openrouter_key' ) ); ?>" class="regular-text" autocomplete="new-password" /></td>
             </tr>
         </table>
 
@@ -81,51 +81,4 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
 
         <?php submit_button(); ?>
     </form>
-
-    <hr>
-    <h2>📋 Available Shortcodes & Pages</h2>
-    <p>Plugin activate ہونے پر یہ pages خودکار بن جاتے ہیں:</p>
-    <table class="widefat striped">
-        <thead>
-            <tr>
-                <th>Shortcode</th>
-                <th>Page URL</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php
-            $shortcode_map = array(
-                'coachpro_page_login'        => array( '[coachpro_login]',        'Login Form' ),
-                'coachpro_page_register'     => array( '[coachpro_register]',     'Register Form' ),
-                'coachpro_page_dashboard'    => array( '[coachpro_dashboard]',    'Main Dashboard' ),
-                'coachpro_page_projects'     => array( '[coachpro_projects]',     'Projects List' ),
-                'coachpro_page_chat'         => array( '[coachpro_chat]',         'AI Chat Workspace' ),
-                'coachpro_page_assistants'   => array( '[coachpro_assistants]',   'Assistants Manager' ),
-                'coachpro_page_saved'        => array( '[coachpro_saved]',        'Saved Responses' ),
-                'coachpro_page_buy_credits'  => array( '[coachpro_buy_credits]',  'Buy Credits / Plans' ),
-                'coachpro_page_transactions' => array( '[coachpro_transactions]', 'Credit History' ),
-                'coachpro_page_settings'     => array( '[coachpro_settings]',     'User Settings' ),
-                'coachpro_page_help'         => array( '[coachpro_help]',         'Help & Guide' ),
-            );
-            foreach ( $shortcode_map as $option => $info ) :
-                $page_id  = get_option( $option );
-                $page_url = $page_id ? get_permalink( $page_id ) : '<em>Not created yet</em>';
-            ?>
-            <tr>
-                <td><code><?php echo esc_html( $info[0] ); ?></code></td>
-                <td><?php echo $page_id ? '<a href="' . esc_url( $page_url ) . '" target="_blank">' . esc_url( $page_url ) . '</a>' : '<em>Not created yet</em>'; ?></td>
-                <td><?php echo esc_html( $info[1] ); ?></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-
-    <h3 style="margin-top:20px;">🔗 Navigation Flow</h3>
-    <p>
-        Login → Dashboard → Projects → Chat<br>
-        Dashboard → Assistants → Chat<br>
-        Dashboard → Buy Credits → Transactions<br>
-        Chat → Saved Responses
-    </p>
 </div>
