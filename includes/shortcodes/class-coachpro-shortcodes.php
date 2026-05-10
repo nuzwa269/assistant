@@ -44,7 +44,16 @@ class CoachPro_Shortcodes {
                 $login_page = get_page_by_path( 'login' );
                 $login_url  = $login_page ? get_permalink( $login_page->ID ) : home_url( '/login' );
             }
-            $redirect_to   = get_permalink();
+            $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+            if ( ! is_string( $request_uri ) || '' === $request_uri ) {
+                $request_uri = '/';
+            }
+            $request_parts = wp_parse_url( $request_uri );
+            $request_path  = isset( $request_parts['path'] ) && is_string( $request_parts['path'] ) ? $request_parts['path'] : '/';
+            $request_query = isset( $request_parts['query'] ) && is_string( $request_parts['query'] ) ? $request_parts['query'] : '';
+            $request_path  = '/' . ltrim( $request_path, '/' );
+            $request_uri   = $request_query ? $request_path . '?' . $request_query : $request_path;
+            $redirect_to   = esc_url_raw( home_url( $request_uri ) );
             if ( ! $redirect_to ) {
                 $redirect_to = home_url();
             }
