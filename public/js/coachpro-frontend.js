@@ -1246,17 +1246,16 @@
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending…';
 
-          return api(cfg, 'conversations/' + convRow.id + '/messages', 'POST', {
-            role: 'user',
-            content: text
-          }).then(function () {
-            if (isFirst) {
-              return api(cfg, 'conversations/' + convRow.id, 'PUT', { title: text.slice(0, 50) });
-            }
-            return null;
-          }).catch(function () {
-            return null;
-          }).then(function () {
+          // ISSUE-02 fix: Do NOT separately POST to conversations/.../messages here.
+          // The /chat endpoint saves the user message atomically along with the AI response.
+          // Doing both caused every user message to be duplicated in the database.
+
+          // Optionally auto-title the conversation on first message.
+          var titlePromise = isFirst
+            ? api(cfg, 'conversations/' + convRow.id, 'PUT', { title: text.slice(0, 50) }).catch(function () { return null; })
+            : Promise.resolve(null);
+
+          return titlePromise.then(function () {
             return api(cfg, 'chat', 'POST', {
               conversation_id: convRow.id,
               model_id: state.modelId || cfg.defaultModelId || 'gpt-4o-mini',

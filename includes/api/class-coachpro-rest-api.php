@@ -361,6 +361,6 @@ class CoachPro_REST_API {
     }
 
     public static function is_coachpro_admin() : bool {
-        return current_user_can( 'manage_options' );
+        return current_user_can( 'manage_options' ) || current_user_can( 'coachpro_admin' );
     }
 }

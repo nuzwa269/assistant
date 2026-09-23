@@ -90,6 +90,34 @@ class CoachPro_Loader {
             return;
         }
 
+        // Only redirect on CoachPro-specific pages; never lock down the whole site.
+        // Collect all page IDs configured for CoachPro.
+        $coachpro_page_options = array(
+            'coachpro_page_login', 'coachpro_page_register', 'coachpro_page_dashboard',
+            'coachpro_page_projects', 'coachpro_page_chat', 'coachpro_page_assistants',
+            'coachpro_page_saved', 'coachpro_page_buy_credits', 'coachpro_page_settings',
+            'coachpro_page_transactions', 'coachpro_page_help',
+        );
+        $coachpro_page_ids = array();
+        foreach ( $coachpro_page_options as $opt ) {
+            $pid = (int) get_option( $opt, 0 );
+            if ( $pid ) {
+                $coachpro_page_ids[] = $pid;
+            }
+        }
+
+        // If the current page is not a CoachPro page, do not redirect.
+        if ( $current_id && ! in_array( $current_id, $coachpro_page_ids, true ) ) {
+            // Also check if the page content contains a CoachPro shortcode as a fallback.
+            $post = get_post( $current_id );
+            if ( ! $post || ! self::page_has_coachpro_shortcode( $post->post_content ) ) {
+                return;
+            }
+        } elseif ( ! $current_id ) {
+            // Non-singular context (archive, search, etc.) — don't redirect.
+            return;
+        }
+
         /**
          * Filter whether unauthenticated users should be redirected to the CoachPro login page.
          *
@@ -133,5 +161,26 @@ class CoachPro_Loader {
 
         wp_safe_redirect( $login_url );
         exit;
+    }
+
+    /**
+     * Check whether a post's content contains any CoachPro shortcode.
+     *
+     * @param string $content Post content.
+     * @return bool
+     */
+    private static function page_has_coachpro_shortcode( string $content ) : bool {
+        $coachpro_shortcodes = array(
+            'coachpro', 'coachpro_dashboard', 'coachpro_chat', 'coachpro_projects',
+            'coachpro_assistants', 'coachpro_saved', 'coachpro_buy_credits',
+            'coachpro_settings', 'coachpro_login', 'coachpro_register',
+            'coachpro_transactions', 'coachpro_help',
+        );
+        foreach ( $coachpro_shortcodes as $tag ) {
+            if ( has_shortcode( $content, $tag ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 }

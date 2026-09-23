@@ -56,7 +56,7 @@ class CoachPro_Auth {
         check_ajax_referer( 'wp_rest', 'nonce' );
 
         $username = sanitize_text_field( wp_unslash( $_POST['username'] ?? '' ) );
-        $password = sanitize_text_field( wp_unslash( $_POST['password'] ?? '' ) );
+        $password = wp_unslash( $_POST['password'] ?? '' );
 
         if ( empty( $username ) || empty( $password ) ) {
             wp_send_json_error( array( 'message' => __( 'Username and password required.', 'coachpro-ai' ) ), 400 );
@@ -293,7 +293,7 @@ class CoachPro_Auth {
             'plan'        => get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free',
             'credits'     => (int) get_user_meta( $user_id, 'coachpro_credits', true ),
             'plan_renews' => get_user_meta( $user_id, 'coachpro_plan_renews', true ),
-            'is_admin'    => user_can( $user_id, 'manage_options' ),
+            'is_admin'    => user_can( $user_id, 'manage_options' ) || user_can( $user_id, 'coachpro_admin' ),
             'nonce'       => wp_create_nonce( 'wp_rest' ),
         );
     }

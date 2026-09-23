@@ -3,7 +3,7 @@
  * Plugin Name: CoachPro AI Assistant
  * Plugin URI:  https://github.com/nuzwa269/coachpro-ai-assistant
  * Description: Complete AI Coaching Assistant — chat, projects, assistants, credits, payments. 100% WordPress native.
- * Version:     1.1.0
+ * Version:     1.1.1
  * Author:      nuzwa269
  * Text Domain: coachpro-ai
  * Domain Path: /languages

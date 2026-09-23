@@ -24,9 +24,8 @@ class CoachPro_Conversations_API {
         $user_id    = get_current_user_id();
         $project_id = sanitize_text_field( $request->get_param( 'project_id' ) ?? '' );
 
-        $where = current_user_can( 'manage_options' )
-            ? array()
-            : array( 'user_id' => $user_id );
+        // Always filter by the authenticated user. Admins use /admin/* routes for global views.
+        $where = array( 'user_id' => $user_id );
         if ( $project_id ) {
             $where['project_id'] = $project_id;
         }
@@ -120,9 +119,22 @@ class CoachPro_Conversations_API {
         }
 
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'conversations' ), array( 'id' => $id ) );
-        $wpdb->delete( CoachPro_DB::table( 'messages' ),      array( 'conversation_id' => $id ) );
-        $wpdb->delete( CoachPro_DB::table( 'conv_summaries' ),array( 'conversation_id' => $id ) );
+
+        // Cascade-delete messages, summaries, and saved responses tied to this conversation.
+        $t_msg     = CoachPro_DB::table( 'messages' );
+        $t_saved   = CoachPro_DB::table( 'saved_responses' );
+
+        // Delete saved responses linked to messages in this conversation.
+        $wpdb->query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "DELETE sr FROM `{$t_saved}` sr
+             INNER JOIN `{$t_msg}` m ON m.id = sr.message_id
+             WHERE m.conversation_id = %s",
+            $id
+        ) );
+
+        $wpdb->delete( CoachPro_DB::table( 'messages' ),       array( 'conversation_id' => $id ) );
+        $wpdb->delete( CoachPro_DB::table( 'conv_summaries' ), array( 'conversation_id' => $id ) );
+        $wpdb->delete( CoachPro_DB::table( 'conversations' ),  array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 

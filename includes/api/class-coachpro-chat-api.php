@@ -87,14 +87,18 @@ class CoachPro_Chat_API {
         // Append recent conversation history (last 20 messages)
         if ( empty( $messages ) ) {
             $t_msg = CoachPro_DB::table( 'messages' );
+            // DESC + array_reverse gives us the MOST RECENT 20 messages in chronological order.
             $history = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                "SELECT role, content FROM `{$t_msg}` WHERE conversation_id = %s ORDER BY created_at ASC LIMIT 20",
+                "SELECT role, content FROM `{$t_msg}` WHERE conversation_id = %s ORDER BY created_at DESC LIMIT 20",
                 $conv_id
             ), ARRAY_A );
 
-            foreach ( (array) $history as $h ) {
+            $history = array_reverse( (array) $history );
+
+            foreach ( $history as $h ) {
                 $ai_messages[] = array( 'role' => $h['role'], 'content' => $h['content'] );
             }
+
         } else {
             foreach ( $messages as $m ) {
                 $ai_messages[] = array(

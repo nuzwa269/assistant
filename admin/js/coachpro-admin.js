@@ -369,6 +369,17 @@
               '<p><label><strong>Provider</strong><select name="provider_name">' + providerOptions(selectedProviderName) + '</select></label></p>' +
               '<p><label><strong>Model ID</strong><input type="text" name="model_id" class="regular-text" value="' + escHtml(editing.id || '') + '"' + (state.editingId ? ' readonly' : ' required') + '></label></p>' +
               '<p><label><strong>Display name</strong><input type="text" name="display_name" class="regular-text" value="' + escHtml(editing.display_name || '') + '" required></label></p>' +
+              '<p><label><strong>Category</strong><select name="category">' +
+                '<option value="text"' + ((editing.category || 'text') === 'text' ? ' selected' : '') + '>Text</option>' +
+                '<option value="image"' + (editing.category === 'image' ? ' selected' : '') + '>Image</option>' +
+                '<option value="reasoning"' + (editing.category === 'reasoning' ? ' selected' : '') + '>Reasoning</option>' +
+              '</select></label></p>' +
+              '<p><label><strong>Credits cost (per message)</strong><input type="number" min="0" step="1" name="credits_cost" value="' + escHtml(editing.credits_cost !== undefined ? editing.credits_cost : '1') + '" required></label></p>' +
+              '<p><label><strong>Minimum plan</strong><select name="min_plan">' +
+                '<option value="free"' + ((editing.min_plan || 'free') === 'free' ? ' selected' : '') + '>Free</option>' +
+                '<option value="basic"' + (editing.min_plan === 'basic' ? ' selected' : '') + '>Basic</option>' +
+                '<option value="pro"' + (editing.min_plan === 'pro' ? ' selected' : '') + '>Pro</option>' +
+              '</select></label></p>' +
               '<p><label><strong>Active</strong><br><input type="checkbox" name="is_active"' + ((editing.is_active === undefined || String(editing.is_active) === '1') ? ' checked' : '') + '> Model can be used</label></p>' +
               '<p><label><strong>Default model</strong><br><input type="checkbox" name="is_default"' + (String(editing.is_default) === '1' ? ' checked' : '') + '> Use as the global fallback</label></p>' +
             '</div>' +
@@ -394,13 +405,16 @@
         '<div class="coachpro-admin-card">' +
           '<h2>Configured models</h2>' +
           '<table class="widefat striped">' +
-            '<thead><tr><th>Provider</th><th>Model ID</th><th>Display Name</th><th>Status</th><th>Default</th><th>Actions</th></tr></thead>' +
+            '<thead><tr><th>Provider</th><th>Model ID</th><th>Display Name</th><th>Category</th><th>Credits</th><th>Min Plan</th><th>Status</th><th>Default</th><th>Actions</th></tr></thead>' +
             '<tbody>' +
               (state.models.length ? state.models.map(function (model) {
                 return '<tr>' +
                   '<td>' + escHtml(model.provider || '') + '</td>' +
                   '<td><code>' + escHtml(model.id || '') + '</code></td>' +
                   '<td>' + escHtml(model.display_name || '') + '</td>' +
+                  '<td>' + escHtml(model.category || 'text') + '</td>' +
+                  '<td>' + escHtml(model.credits_cost !== undefined ? model.credits_cost : 1) + '</td>' +
+                  '<td>' + escHtml((model.min_plan || 'free').toUpperCase()) + '</td>' +
                   '<td>' + (String(model.is_active) === '1' ? '✅ Active' : '❌ Inactive') + '</td>' +
                   '<td>' + (String(model.is_default) === '1' ? '⭐ Default' : '—') + '</td>' +
                   '<td class="coachpro-admin-actions">' +
@@ -408,7 +422,7 @@
                     '<button type="button" class="button button-small button-link-delete" data-model-action="delete" data-id="' + escHtml(model.id) + '">Delete</button>' +
                   '</td>' +
                 '</tr>';
-              }).join('') : '<tr><td colspan="6">No models configured.</td></tr>') +
+              }).join('') : '<tr><td colspan="9">No models configured.</td></tr>') +
             '</tbody>' +
           '</table>' +
         '</div>';
@@ -455,6 +469,9 @@
         var payload = {
           provider_name: formData.get('provider_name'),
           display_name: formData.get('display_name'),
+          category: formData.get('category') || 'text',
+          credits_cost: parseInt(formData.get('credits_cost'), 10) >= 0 ? parseInt(formData.get('credits_cost'), 10) : 1,
+          min_plan: formData.get('min_plan') || 'free',
           is_active: root.querySelector('[name="is_active"]').checked ? 1 : 0,
           is_default: root.querySelector('[name="is_default"]').checked ? 1 : 0
         };

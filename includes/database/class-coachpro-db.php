@@ -43,7 +43,12 @@ class CoachPro_DB {
         }
 
         $where_clause = $wheres ? 'WHERE ' . implode( ' AND ', $wheres ) : '';
-        $order_clause = $order  ? "ORDER BY {$order}" : '';
+
+        // Validate $order against a whitelist pattern to prevent SQL injection.
+        // Only allow: column_name ASC|DESC (e.g. "created_at DESC", "user_id ASC")
+        $safe_order = $order && preg_match( '/^[a-zA-Z0-9_]+\s+(ASC|DESC)$/i', trim( $order ) ) ? trim( $order ) : '';
+        $order_clause = $safe_order ? "ORDER BY {$safe_order}" : '';
+
         // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $sql = "SELECT * FROM `{$t}` {$where_clause} {$order_clause} LIMIT %d OFFSET %d";
         // phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared

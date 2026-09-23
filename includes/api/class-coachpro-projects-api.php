@@ -22,10 +22,9 @@ class CoachPro_Projects_API {
 
     public static function list_projects( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
-        $where   = current_user_can( 'manage_options' )
-            ? array()
-            : array( 'user_id' => $user_id );
-        $rows    = CoachPro_DB::get_rows( 'projects', $where, 'created_at DESC' );
+        // Always filter by the authenticated user's ID.
+        // Admins wanting to view all data should use the /admin/* endpoints.
+        $rows    = CoachPro_DB::get_rows( 'projects', array( 'user_id' => $user_id ), 'created_at DESC' );
         return rest_ensure_response( $rows );
     }
 
@@ -101,6 +100,42 @@ class CoachPro_Projects_API {
         }
 
         global $wpdb;
+
+        // Cascade-delete all conversations and their child records under this project.
+        $t_conv  = CoachPro_DB::table( 'conversations' );
+        $t_msg   = CoachPro_DB::table( 'messages' );
+        $t_saved = CoachPro_DB::table( 'saved_responses' );
+        $t_summ  = CoachPro_DB::table( 'conv_summaries' );
+
+        // Delete saved responses tied to messages in this project's conversations.
+        $wpdb->query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "DELETE sr FROM `{$t_saved}` sr
+             INNER JOIN `{$t_msg}` m ON m.id = sr.message_id
+             INNER JOIN `{$t_conv}` c ON c.id = m.conversation_id
+             WHERE c.project_id = %s",
+            $id
+        ) );
+
+        // Delete messages in this project's conversations.
+        $wpdb->query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "DELETE m FROM `{$t_msg}` m
+             INNER JOIN `{$t_conv}` c ON c.id = m.conversation_id
+             WHERE c.project_id = %s",
+            $id
+        ) );
+
+        // Delete conversation summaries.
+        $wpdb->query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "DELETE cs FROM `{$t_summ}` cs
+             INNER JOIN `{$t_conv}` c ON c.id = cs.conversation_id
+             WHERE c.project_id = %s",
+            $id
+        ) );
+
+        // Delete conversations.
+        $wpdb->delete( CoachPro_DB::table( 'conversations' ), array( 'project_id' => $id ) );
+
+        // Finally delete the project itself.
         $wpdb->delete( CoachPro_DB::table( 'projects' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }

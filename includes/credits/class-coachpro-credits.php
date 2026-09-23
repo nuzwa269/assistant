@@ -30,15 +30,24 @@ class CoachPro_Credits {
     public static function add( int $user_id, int $amount, string $kind, ?string $reference_id = null, ?string $notes = null ) : int {
         global $wpdb;
 
-        // Lock via DB transaction for atomicity
-        $wpdb->query( 'START TRANSACTION' );
+        $amount = abs( $amount );
 
-        $current = self::get_balance( $user_id );
-        $new_balance = $current + abs( $amount );
-        update_user_meta( $user_id, 'coachpro_credits', $new_balance );
-        self::log_transaction( $user_id, abs( $amount ), $kind, $new_balance, $reference_id, null, $notes );
+        // Atomic increment — avoids race condition from read-modify-write.
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$wpdb->usermeta}
+             SET meta_value = CAST(meta_value AS SIGNED) + %d
+             WHERE user_id = %d AND meta_key = 'coachpro_credits'",
+            $amount,
+            $user_id
+        ) );
 
-        $wpdb->query( 'COMMIT' );
+        // Ensure the meta row exists if user has never had credits set.
+        if ( ! $wpdb->rows_affected ) {
+            update_user_meta( $user_id, 'coachpro_credits', $amount );
+        }
+
+        $new_balance = self::get_balance( $user_id );
+        self::log_transaction( $user_id, $amount, $kind, $new_balance, $reference_id, null, $notes );
 
         return $new_balance;
     }
@@ -55,19 +64,30 @@ class CoachPro_Credits {
     public static function deduct( int $user_id, int $cost, string $message_id, string $model_id ) : bool {
         global $wpdb;
 
-        $wpdb->query( 'START TRANSACTION' );
+        if ( $cost <= 0 ) {
+            return true;
+        }
 
-        $current = self::get_balance( $user_id );
-        if ( $current < $cost ) {
-            $wpdb->query( 'ROLLBACK' );
+        // Atomic conditional decrement — only updates if balance is sufficient.
+        // The WHERE clause prevents double-spending under concurrent requests.
+        $updated = $wpdb->query( $wpdb->prepare(
+            "UPDATE {$wpdb->usermeta}
+             SET meta_value = CAST(meta_value AS SIGNED) - %d
+             WHERE user_id = %d
+               AND meta_key = 'coachpro_credits'
+               AND CAST(meta_value AS SIGNED) >= %d",
+            $cost,
+            $user_id,
+            $cost
+        ) );
+
+        if ( ! $updated ) {
+            // No row was updated — either insufficient balance or row missing.
             return false;
         }
 
-        $new_balance = $current - $cost;
-        update_user_meta( $user_id, 'coachpro_credits', $new_balance );
+        $new_balance = self::get_balance( $user_id );
         self::log_transaction( $user_id, -$cost, 'message_deduct', $new_balance, $message_id, $model_id, null );
-
-        $wpdb->query( 'COMMIT' );
 
         return true;
     }

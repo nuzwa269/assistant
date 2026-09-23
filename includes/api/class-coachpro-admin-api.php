@@ -322,7 +322,13 @@ class CoachPro_Admin_API {
         } elseif ( 'subscription' === $payment['kind'] && $payment['plan_id'] ) {
             $plan = CoachPro_DB::get_row( 'plans', $payment['plan_id'] );
             update_user_meta( $user_id, 'coachpro_plan', $payment['plan_id'] );
-            update_user_meta( $user_id, 'coachpro_plan_renews', gmdate( 'Y-m-d H:i:s', strtotime( '+30 days' ) ) );
+
+            // Extend from the current expiry if it's still in the future; otherwise extend from now.
+            // This prevents wiping out remaining subscription days on early renewal.
+            $current_renews = get_user_meta( $user_id, 'coachpro_plan_renews', true );
+            $current_expiry_ts = $current_renews ? strtotime( $current_renews ) : 0;
+            $base_ts = max( time(), (int) $current_expiry_ts );
+            update_user_meta( $user_id, 'coachpro_plan_renews', gmdate( 'Y-m-d H:i:s', $base_ts + ( 30 * DAY_IN_SECONDS ) ) );
             if ( $plan ) {
                 CoachPro_Credits::add( $user_id, (int) $plan['monthly_credits'], 'subscription_grant', $id, 'Subscription activated: ' . $payment['plan_id'] );
             }
@@ -435,6 +441,9 @@ class CoachPro_Admin_API {
         if ( isset( $params['provider_type'] ) && in_array( $params['provider_type'], array( 'openai_compatible', 'anthropic', 'gemini', 'lovable' ), true ) ) {
             $data['provider_type'] = $params['provider_type'];
         }
+        if ( isset( $params['category'] ) && in_array( $params['category'], array( 'text', 'image', 'reasoning' ), true ) ) {
+            $data['category'] = $params['category'];
+        }
         if ( isset( $params['min_plan'] ) && in_array( $params['min_plan'], array( 'free', 'basic', 'pro' ), true ) ) {
             $data['min_plan'] = $params['min_plan'];
         }
@@ -492,6 +501,9 @@ class CoachPro_Admin_API {
             $api_key = trim( (string) ( $providers[ $key ]['api_key'] ?? '' ) );
             if ( '' !== $api_key ) {
                 update_option( $definition['api_key_option'], sanitize_text_field( $api_key ), false );
+            } elseif ( array_key_exists( $key, $providers ) ) {
+                // Explicit empty string submitted for this provider \u2014 clear the stored key.
+                delete_option( $definition['api_key_option'] );
             }
         }
         update_option( 'coachpro_custom_base_url', esc_url_raw( trim( (string) ( $providers['custom']['base_url'] ?? '' ) ) ), false );

@@ -41,8 +41,28 @@ class CoachPro_Payments_API {
         }
 
         $amount_pkr = absint( $params['amount_pkr'] ?? 0 );
-        if ( ! $amount_pkr ) {
-            return new WP_Error( 'missing_amount', __( 'amount_pkr is required.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        $plan_id    = sanitize_text_field( $params['plan_id'] ?? '' ) ?: null;
+        $pack_id    = sanitize_text_field( $params['pack_id'] ?? '' ) ?: null;
+
+        // Override amount_pkr with the authoritative price from the plan or pack record
+        // to prevent clients submitting a fraudulently low amount.
+        if ( 'subscription' === $kind && $plan_id ) {
+            $plan = CoachPro_DB::get_row( 'plans', $plan_id );
+            if ( ! $plan ) {
+                return new WP_Error( 'invalid_plan', __( 'Invalid plan.', 'coachpro-ai' ), array( 'status' => 400 ) );
+            }
+            $amount_pkr = (int) $plan['price_pkr'];
+        } elseif ( 'credit_pack' === $kind && $pack_id ) {
+            $pack = CoachPro_DB::get_row( 'credit_packs', $pack_id );
+            if ( ! $pack ) {
+                return new WP_Error( 'invalid_pack', __( 'Invalid credit pack.', 'coachpro-ai' ), array( 'status' => 400 ) );
+            }
+            $amount_pkr = (int) $pack['price_pkr'];
+        } else {
+            // Fallback: must have a non-zero amount if no plan/pack given.
+            if ( ! $amount_pkr ) {
+                return new WP_Error( 'missing_amount', __( 'amount_pkr is required.', 'coachpro-ai' ), array( 'status' => 400 ) );
+            }
         }
 
         global $wpdb;
@@ -53,8 +73,8 @@ class CoachPro_Payments_API {
                 'id'           => $id,
                 'user_id'      => $user_id,
                 'kind'         => $kind,
-                'plan_id'      => sanitize_text_field( $params['plan_id'] ?? '' ) ?: null,
-                'pack_id'      => sanitize_text_field( $params['pack_id'] ?? '' ) ?: null,
+                'plan_id'      => $plan_id,
+                'pack_id'      => $pack_id,
                 'amount_pkr'   => $amount_pkr,
                 'method'       => $method,
                 'sender_name'  => sanitize_text_field( $params['sender_name'] ?? '' ),
@@ -87,7 +107,23 @@ class CoachPro_Payments_API {
         require_once ABSPATH . 'wp-admin/includes/image.php';
 
         $file     = $_FILES['proof']; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-        $uploaded = wp_handle_upload( $file, array( 'test_form' => false ) );
+
+        // Restrict to safe image/PDF types and enforce a 5 MB size limit.
+        $allowed_mimes = array(
+            'jpg|jpeg|jpe' => 'image/jpeg',
+            'png'          => 'image/png',
+            'pdf'          => 'application/pdf',
+        );
+        $max_size_bytes = 5 * 1024 * 1024; // 5 MB
+
+        if ( isset( $file['size'] ) && $file['size'] > $max_size_bytes ) {
+            return new WP_Error( 'file_too_large', __( 'File must be smaller than 5 MB.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+
+        $uploaded = wp_handle_upload( $file, array(
+            'test_form' => false,
+            'mimes'     => $allowed_mimes,
+        ) );
 
         if ( isset( $uploaded['error'] ) ) {
             return new WP_Error( 'upload_failed', $uploaded['error'], array( 'status' => 500 ) );
