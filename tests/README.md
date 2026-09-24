@@ -27,6 +27,21 @@ existing resource-prefixed model names, and the dashboard's project/conversation
 request sequence using mocked responses and synthetic model IDs. All 43 integration
 checks and 13 Gemini checks passed; no live provider key is needed.
 
+For Quick Chat retry and plan-downgrade regressions:
+
+```powershell
+node tests/quick-chat.js
+& C:/xampp/php/php.exe tests/credit-regressions.php
+```
+
+The JavaScript tests exercise the shipped request sender with a mocked transport,
+including lost responses, busy/pending requests, confirmed failures, and double
+submissions. The PHP script runs the integration suite first, then verifies retry
+billing, expiry/direct-downgrade enforcement, preserved data, and restored access
+after upgrade. Excess prebuilt activations remain stored but are paused, ordered
+by activation time and ID; deactivating the allowed assistant promotes the next one.
+These are automated transport/REST tests, not browser click-through tests.
+
 Stop the isolated server after testing:
 
 ```powershell

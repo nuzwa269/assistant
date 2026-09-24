@@ -41,6 +41,7 @@ class CoachPro_Chat_API {
         if ( $existing ) {
             if ( (int) $existing['user_id'] !== $user_id || $existing['conversation_id'] !== $conv_id ) return new WP_Error('conflict', 'Request ID already used.', array('status' => 409));
             if ( 'complete' === $existing['status'] ) return self::response($existing['message_id'], $user_id);
+            if ( 'failed' === $existing['status'] ) return new WP_Error('request_failed', 'This request failed and any reserved credits were refunded. You may retry with a new request ID.', array('status'=>409));
             return new WP_Error('request_processed', 'This request is pending or failed. Refresh the conversation before retrying.', array('status' => 409));
         }
         $message_id = wp_generate_uuid4();

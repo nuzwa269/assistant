@@ -23,7 +23,7 @@ class CoachPro_Assistants_API {
             return true;
         }
         if ( (int) $assistant['is_prebuilt'] === 1 ) {
-            return (int) $assistant['is_active'] === 1 && CoachPro_DB::count('user_active_assistants', array('user_id'=>$user_id, 'assistant_id'=>$assistant['id'])) > 0;
+            return (int) $assistant['is_active'] === 1 && in_array( $assistant['id'], CoachPro_Credits::active_prebuilt_ids( $user_id ), true );
         }
         return (int) $assistant['owner_id'] === $user_id && (int)$assistant['is_active'] === 1;
     }
@@ -53,6 +53,16 @@ class CoachPro_Assistants_API {
             ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         }
 
+        if ( ! current_user_can( 'manage_options' ) ) {
+            $effective = CoachPro_Credits::active_prebuilt_ids( $user_id );
+            foreach ( $rows as &$row ) {
+                if ( (int) $row['is_prebuilt'] !== 1 ) continue;
+                $allowed = in_array( $row['id'], $effective, true );
+                $row['is_activation_suspended'] = (int) ( ! $allowed && (int) $row['is_activated'] > 0 );
+                $row['is_activated'] = (int) $allowed;
+            }
+            unset( $row );
+        }
         return rest_ensure_response( $rows );
     }
 
@@ -153,7 +163,12 @@ class CoachPro_Assistants_API {
             return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        if (CoachPro_DB::count('user_active_assistants', array('user_id'=>$user_id, 'assistant_id'=>$assistant_id))) return rest_ensure_response(array('activated'=>true));
+        if (CoachPro_DB::count('user_active_assistants', array('user_id'=>$user_id, 'assistant_id'=>$assistant_id))) {
+            if ( (int) $assistant['is_prebuilt'] === 1 && ! self::user_can_use( $assistant, $user_id ) ) {
+                return new WP_Error('limit_reached', 'This activation is paused by your current plan. Upgrade or deactivate another assistant.', array('status'=>403));
+            }
+            return rest_ensure_response(array('activated'=>true));
+        }
         // Check configured activation limit
         if ( $assistant['is_prebuilt'] && ! CoachPro_Credits::can_activate_prebuilt( $user_id ) ) {
             return new WP_Error( 'limit_reached', __( 'Your active assistant limit has been reached. Upgrade to activate more.', 'coachpro-ai' ), array( 'status' => 403 ) );

@@ -580,6 +580,44 @@
   /* -----------------------------------------------------------------------
    * View: Dashboard
    * --------------------------------------------------------------------- */
+  function chatRequestId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = window.crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+      return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+
+  // Keep uncertain requests on the same conversation and ID across button retries/renders.
+  function sendQuickChat(cfg, text, assistantId, projectId) {
+    var attempt = cfg.quickChatAttempt;
+    if (attempt && attempt.pending) return attempt.pending;
+    if (!attempt || attempt.text !== text || attempt.assistantId !== assistantId || (attempt.initialProjectId !== projectId && attempt.projectId !== projectId)) {
+      attempt = { text: text, assistantId: assistantId, initialProjectId: projectId, projectId: projectId, conversationId: '', requestId: chatRequestId() };
+      cfg.quickChatAttempt = attempt;
+    }
+    function send() {
+      return api(cfg, 'chat', 'POST', { conversation_id: attempt.conversationId, request_id: attempt.requestId, message: attempt.text });
+    }
+    attempt.pending = Promise.resolve().then(function() {
+      if (attempt.projectId) return;
+      return api(cfg, 'projects', 'POST', { name: 'Quick Chat', description: 'Auto-created for quick dashboard chat' }).then(function(p) { attempt.projectId = p.id; });
+    }).then(function() {
+      if (attempt.conversationId) return;
+      return api(cfg, 'conversations', 'POST', { project_id: attempt.projectId, assistant_id: attempt.assistantId, title: 'New conversation' }).then(function(c) { attempt.conversationId = c.id; });
+    }).then(function() {
+      return send().catch(function(error) {
+        // Only the server's terminal failed state proves a fresh charge is safe.
+        if (!error || error.code !== 'request_failed') throw error;
+        attempt.requestId = chatRequestId();
+        return send();
+      });
+    }).then(function() {
+      cfg.quickChatAttempt = null;
+      return { projectId: attempt.projectId, conversationId: attempt.conversationId, assistantId: attempt.assistantId };
+    }).finally(function() { attempt.pending = null; });
+    return attempt.pending;
+  }
+
   function renderDashboard(el_container, cfg) {
     el_container.innerHTML = '';
     el_container.appendChild(navBar(cfg, 'dashboard'));
@@ -715,7 +753,7 @@
 
       quickSend.addEventListener('click', function () {
         var text = quickInput.value.trim();
-        if (!text) return;
+        if (!text || quickSend.disabled) return;
         if (!selectedAssistant) {
           alert('Please activate an assistant first.');
           return;
@@ -724,25 +762,8 @@
         quickSend.disabled = true;
         quickSend.textContent = 'Starting…';
 
-        var ensureProject = Promise.resolve((cfg.projectId || (projects[0] && projects[0].id) || ''));
-        if (!projects.length && !cfg.projectId) {
-          ensureProject = api(cfg, 'projects', 'POST', { name: 'Quick Chat', description: 'Auto-created for quick dashboard chat' })
-            .then(function (p) { return p.id; });
-        }
-
-        ensureProject.then(function (projectId) {
-          return api(cfg, 'conversations', 'POST', {
-            project_id: projectId,
-            assistant_id: selectedAssistant.id,
-            title: 'New conversation'
-          }).then(function (conv) {
-            return api(cfg, 'chat', 'POST', {
-              conversation_id: conv.id,
-              message: text
-            }).then(function () {
-              goToChat(projectId, conv.id, selectedAssistant.id);
-            });
-          });
+        sendQuickChat(cfg, text, selectedAssistant.id, cfg.projectId || (projects[0] && projects[0].id) || '').then(function (result) {
+          goToChat(result.projectId, result.conversationId, result.assistantId);
         }).catch(function (e) {
           showError(quick, (e && e.message) || 'Unable to start quick chat.');
           quickSend.disabled = false;
@@ -941,14 +962,19 @@
       var grid = el('div', 'cp-cards-grid');
       assistants.forEach(function (a) {
         var activated = String(a.is_activated) === '1' || a.is_activated === true;
+        var suspended = Number(a.is_activation_suspended) === 1;
         var card = el('div', 'cp-card cp-assistant-card');
         card.innerHTML = '<div class="cp-assistant-icon">' + escHtml(a.icon || '🤖') + '</div>' +
           '<h3>' + escHtml(a.name) + (Number(a.is_prebuilt) === 1 ? ' <span class="cp-badge">Prebuilt</span>' : '') + '</h3>' +
           '<p>' + escHtml(a.description || '') + '</p>';
 
         var toggleBtn = btn(activated ? '✅ Activated' : 'Activate', activated ? 'cp-btn-outline' : 'cp-btn-primary');
+        if (suspended) {
+          card.appendChild(el('p', '', 'Paused by your plan. Your conversations are preserved; upgrade to restore access.'));
+          toggleBtn.textContent = 'Remove paused activation';
+        }
         toggleBtn.addEventListener('click', function () {
-          if (activated) {
+          if (activated || suspended) {
             api(cfg, 'assistants/' + a.id + '/activate', 'DELETE').then(function () { renderAssistants(el_container, cfg); });
           } else {
             api(cfg, 'assistants/' + a.id + '/activate', 'POST').then(function () { renderAssistants(el_container, cfg); })

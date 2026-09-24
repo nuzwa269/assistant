@@ -70,6 +70,20 @@ class CoachPro_Credits {
     public static function can_save_response( int $id ) : bool {
         return self::within_limit( $id, 'max_saved_responses', 'saved_responses', array( 'user_id' => $id ) );
     }
+    /** Effective activations only; retain excess rows so upgrades restore access. */
+    public static function active_prebuilt_ids( int $user_id ) : array {
+        global $wpdb;
+        $plan = self::refresh_plan( $user_id );
+        if ( is_wp_error( $plan ) || ! $plan ) return array();
+        $limit = $plan['max_active_assistants'];
+        if ( null !== $limit && (int) $limit <= 0 ) return array();
+        $sql = $wpdb->prepare(
+            'SELECT ua.assistant_id FROM ' . CoachPro_DB::table('user_active_assistants') . ' ua INNER JOIN ' . CoachPro_DB::table('assistants') . ' a ON a.id = ua.assistant_id WHERE ua.user_id = %d AND a.is_prebuilt = 1 AND a.is_active = 1 ORDER BY ua.activated_at ASC, ua.id ASC',
+            $user_id
+        );
+        if ( null !== $limit ) $sql .= $wpdb->prepare( ' LIMIT %d', max( 0, (int) $limit ) );
+        return (array) $wpdb->get_col( $sql );
+    }
     public static function can_activate_prebuilt( int $id ) : bool {
         global $wpdb;
         $plan = self::refresh_plan( $id );
