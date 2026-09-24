@@ -159,7 +159,19 @@ class CoachPro_AI_Provider {
         return self::parse_anthropic_response( $response );
     }
 
+    /** Store a bare ID; the REST endpoint supplies the models/ resource prefix. */
+    public static function normalize_gemini_model_name( string $model_name ) {
+        $model_name = preg_replace( '#^models/#', '', trim( $model_name ) );
+        if ( ! preg_match( '/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/D', $model_name ) ) {
+            return new WP_Error( 'invalid_gemini_model', 'Enter a Gemini API model ID or models/<model-id>, not a display name, provider prefix, or URL.', array( 'status' => 400 ) );
+        }
+        return $model_name;
+    }
+
     public static function call_gemini( string $base_url, string $api_key, string $model_name, array $messages, array $options = array() ) {
+        // Normalize on dispatch too, so existing prefixed records keep working.
+        $model_name = self::normalize_gemini_model_name( $model_name );
+        if ( is_wp_error( $model_name ) ) return $model_name;
         $system   = '';
         $contents = array();
 

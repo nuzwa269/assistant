@@ -371,6 +371,7 @@
             '<div class="coachpro-admin-grid">' +
               '<p><label><strong>Provider</strong><select name="provider_name">' + providerOptions(selectedProviderName) + '</select></label></p>' +
               '<p><label><strong>Model ID</strong><input type="text" name="model_id" class="regular-text" value="' + escHtml(editing.id || '') + '"' + (state.editingId ? ' readonly' : ' required') + '></label></p>' +
+              '<p><label><strong>API Model Name</strong><input type="text" name="api_model_name" class="regular-text" value="' + escHtml(editing.api_model_name || '') + '"></label><span class="description">Leave blank to use the Model ID. For Gemini, use the API model ID or models/&lt;model-id&gt;, not a display name or URL.</span></p>' +
               '<p><label><strong>Display name</strong><input type="text" name="display_name" class="regular-text" value="' + escHtml(editing.display_name || '') + '" required></label></p>' +
               '<p><label><strong>Category</strong><select name="category">' +
                 '<option value="text"' + ((editing.category || 'text') === 'text' ? ' selected' : '') + '>Text</option>' +
@@ -391,7 +392,6 @@
                 '<p><label><strong>Custom Provider Label</strong><input type="text" name="custom_provider_label" class="regular-text" value="' + escHtml(customProviderLabelValue) + '" placeholder="OpenRouter"></label></p>' +
                 '<p><label><strong>API Base URL</strong><input type="text" name="api_base_url" class="regular-text" value="' + escHtml(editing.api_base_url || '') + '" placeholder="https://openrouter.ai/api/v1"></label></p>' +
                 '<p><label><strong>API Key Option Name</strong><input type="text" name="api_key_secret_name" class="regular-text" value="' + escHtml(editing.api_key_secret_name || 'coachpro_custom_key') + '"></label></p>' +
-                '<p><label><strong>API Model Name</strong><input type="text" name="api_model_name" class="regular-text" value="' + escHtml(editing.api_model_name || '') + '"></label></p>' +
                 '<p><label><strong>Protocol</strong><select name="provider_type">' +
                   '<option value="openai_compatible"' + (customProtocolValue === 'openai_compatible' ? ' selected' : '') + '>openai_compatible</option>' +
                   '<option value="anthropic"' + (customProtocolValue === 'anthropic' ? ' selected' : '') + '>anthropic</option>' +
@@ -472,6 +472,7 @@
         var payload = {
           provider_name: formData.get('provider_name'),
           display_name: formData.get('display_name'),
+          api_model_name: String(formData.get('api_model_name') || '').trim() || formData.get('model_id'),
           category: formData.get('category') || 'text',
           credits_cost: parseInt(formData.get('credits_cost'), 10) >= 0 ? parseInt(formData.get('credits_cost'), 10) : 1,
           min_plan: formData.get('min_plan') || 'free',
@@ -483,7 +484,6 @@
           payload.custom_provider_label = formData.get('custom_provider_label');
           payload.api_base_url = formData.get('api_base_url');
           payload.api_key_secret_name = formData.get('api_key_secret_name');
-          payload.api_model_name = formData.get('api_model_name');
           payload.provider_type = formData.get('provider_type');
         }
 

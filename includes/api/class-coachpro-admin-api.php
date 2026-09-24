@@ -327,6 +327,11 @@ class CoachPro_Admin_API {
             'description'         => sanitize_textarea_field( $params['description'] ?? '' ),
         );
         $data = self::apply_model_provider_defaults( $params, $data );
+        if ( 'gemini' === $data['provider_type'] ) {
+            $name = CoachPro_AI_Provider::normalize_gemini_model_name( $data['api_model_name'] );
+            if ( is_wp_error( $name ) ) return $name;
+            $data['api_model_name'] = $name;
+        }
         if ( $data['is_default'] ) {
             $data['is_active'] = 1;
         }
@@ -382,6 +387,12 @@ class CoachPro_Admin_API {
         }
 
         $data = self::apply_model_provider_defaults( $params, $data );
+
+        if ( 'gemini' === ( $data['provider_type'] ?? $row['provider_type'] ) ) {
+            $name = CoachPro_AI_Provider::normalize_gemini_model_name( $data['api_model_name'] ?? $row['api_model_name'] );
+            if ( is_wp_error( $name ) ) return $name;
+            $data['api_model_name'] = $name;
+        }
 
         if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
 

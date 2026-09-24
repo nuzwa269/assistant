@@ -20,6 +20,13 @@ Run in order:
 & C:/xampp/php/php.exe tests/concurrency.php
 ```
 
+For Gemini configuration and Quick Chat regression coverage, run
+`C:/xampp/php/php.exe tests/gemini.php`. This also runs the integration suite
+and recreates its disposable fixtures. It verifies admin create/update validation,
+existing resource-prefixed model names, and the dashboard's project/conversation/chat
+request sequence using mocked responses and synthetic model IDs. All 43 integration
+checks and 13 Gemini checks passed; no live provider key is needed.
+
 Stop the isolated server after testing:
 
 ```powershell
