@@ -24,8 +24,9 @@ class CoachPro_Payments_API {
     }
 
     public static function list_payments( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         $user_id = get_current_user_id();
-        $rows    = CoachPro_DB::get_rows( 'payments', array( 'user_id' => $user_id ), 'created_at DESC' );
+        $rows    = CoachPro_DB::get_rows( 'payments', array( 'user_id' => $user_id ), 'created_at DESC', $limit, $offset );
         return rest_ensure_response( $rows );
     }
 
@@ -40,22 +41,26 @@ class CoachPro_Payments_API {
             return new WP_Error( 'missing_fields', __( 'kind and method are required.', 'coachpro-ai' ), array( 'status' => 400 ) );
         }
 
-        $amount_pkr = absint( $params['amount_pkr'] ?? 0 );
-        if ( ! $amount_pkr ) {
-            return new WP_Error( 'missing_amount', __( 'amount_pkr is required.', 'coachpro-ai' ), array( 'status' => 400 ) );
-        }
+        $plan_id = 'subscription' === $kind ? sanitize_text_field($params['plan_id'] ?? '') : null;
+        $pack_id = 'credit_pack' === $kind ? sanitize_text_field($params['pack_id'] ?? '') : null;
+        $item = CoachPro_DB::get_row('subscription' === $kind ? 'plans' : 'credit_packs', (string)($plan_id ?: $pack_id));
+        if ( ! $item || ! $item['is_active'] || (int)$item['price_pkr'] <= 0 ) return new WP_Error('invalid_product', 'Choose an active paid plan or credit pack.', array('status'=>400));
+        if (empty($params['reference_no']) || empty($params['sender_name'])) return new WP_Error('missing_reference', 'Sender name and payment reference are required.', array('status'=>400));
+        $amount_pkr = (int)$item['price_pkr'];
+        $credits_grant = (int)$item['subscription' === $kind ? 'monthly_credits' : 'credits'];
 
         global $wpdb;
         $id = wp_generate_uuid4();
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'payments' ),
             array(
                 'id'           => $id,
                 'user_id'      => $user_id,
                 'kind'         => $kind,
-                'plan_id'      => sanitize_text_field( $params['plan_id'] ?? '' ) ?: null,
-                'pack_id'      => sanitize_text_field( $params['pack_id'] ?? '' ) ?: null,
+                'plan_id'      => $plan_id,
+                'pack_id'      => $pack_id,
                 'amount_pkr'   => $amount_pkr,
+                'credits_grant' => $credits_grant,
                 'method'       => $method,
                 'sender_name'  => sanitize_text_field( $params['sender_name'] ?? '' ),
                 'sender_phone' => sanitize_text_field( $params['sender_phone'] ?? '' ),
@@ -63,7 +68,7 @@ class CoachPro_Payments_API {
                 'notes'        => sanitize_textarea_field( $params['notes'] ?? '' ),
                 'status'       => 'pending',
             ),
-            array( '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
+            array( '%s', '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
         );
 
         return rest_ensure_response( CoachPro_DB::get_row( 'payments', $id ) );
@@ -78,6 +83,8 @@ class CoachPro_Payments_API {
             return new WP_Error( 'not_found', __( 'Payment not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
         }
 
+        if ('pending' !== $payment['status']) return new WP_Error('already_processed', 'Only pending payments accept proof uploads.', array('status'=>409));
+
         if ( empty( $_FILES['proof'] ) ) {
             return new WP_Error( 'missing_file', __( 'No file uploaded.', 'coachpro-ai' ), array( 'status' => 400 ) );
         }
@@ -87,14 +94,30 @@ class CoachPro_Payments_API {
         require_once ABSPATH . 'wp-admin/includes/image.php';
 
         $file     = $_FILES['proof']; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-        $uploaded = wp_handle_upload( $file, array( 'test_form' => false ) );
+
+        // Restrict to safe image/PDF types and enforce a 5 MB size limit.
+        $allowed_mimes = array(
+            'jpg|jpeg|jpe' => 'image/jpeg',
+            'png'          => 'image/png',
+            'pdf'          => 'application/pdf',
+        );
+        $max_size_bytes = 5 * 1024 * 1024; // 5 MB
+
+        if ( isset( $file['size'] ) && $file['size'] > $max_size_bytes ) {
+            return new WP_Error( 'file_too_large', __( 'File must be smaller than 5 MB.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+
+        $uploaded = wp_handle_upload( $file, array(
+            'test_form' => false,
+            'mimes'     => $allowed_mimes,
+        ) );
 
         if ( isset( $uploaded['error'] ) ) {
             return new WP_Error( 'upload_failed', $uploaded['error'], array( 'status' => 500 ) );
         }
 
         global $wpdb;
-        $wpdb->update(
+        CoachPro_DB::update(
             CoachPro_DB::table( 'payments' ),
             array( 'proof_url' => esc_url_raw( $uploaded['url'] ) ),
             array( 'id' => $payment_id ),

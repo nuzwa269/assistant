@@ -66,14 +66,6 @@ class CoachPro_AI_Provider {
             }
         }
 
-        // Schedule background summary if conversation is growing
-        if ( $conv_id && ! is_wp_error( $result ) ) {
-            $count = CoachPro_DB::count( 'messages', array( 'conversation_id' => $conv_id ) );
-            if ( $count > 0 && 0 === $count % 20 ) {
-                wp_schedule_single_event( time() + 30, 'coachpro_summarize', array( $conv_id ) );
-            }
-        }
-
         return $result;
     }
 
@@ -133,7 +125,7 @@ class CoachPro_AI_Provider {
         $filtered = array();
         foreach ( $messages as $msg ) {
             if ( 'system' === $msg['role'] ) {
-                $system = $msg['content'];
+                $system .= ($system ? "\n\n" : '') . $msg['content'];
             } else {
                 $filtered[] = $msg;
             }
@@ -167,7 +159,19 @@ class CoachPro_AI_Provider {
         return self::parse_anthropic_response( $response );
     }
 
+    /** Store a bare ID; the REST endpoint supplies the models/ resource prefix. */
+    public static function normalize_gemini_model_name( string $model_name ) {
+        $model_name = preg_replace( '#^models/#', '', trim( $model_name ) );
+        if ( ! preg_match( '/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/D', $model_name ) ) {
+            return new WP_Error( 'invalid_gemini_model', 'Enter a Gemini API model ID or models/<model-id>, not a display name, provider prefix, or URL.', array( 'status' => 400 ) );
+        }
+        return $model_name;
+    }
+
     public static function call_gemini( string $base_url, string $api_key, string $model_name, array $messages, array $options = array() ) {
+        // Normalize on dispatch too, so existing prefixed records keep working.
+        $model_name = self::normalize_gemini_model_name( $model_name );
+        if ( is_wp_error( $model_name ) ) return $model_name;
         $system   = '';
         $contents = array();
 
@@ -178,7 +182,7 @@ class CoachPro_AI_Provider {
             }
 
             if ( 'system' === ( $message['role'] ?? '' ) ) {
-                $system = $content;
+                $system .= ($system ? "\n\n" : '') . $content;
                 continue;
             }
 
@@ -235,7 +239,17 @@ class CoachPro_AI_Provider {
     // Cron: rolling summary
     // -------------------------------------------------------------------------
     public static function run_summary_cron( string $conv_id ) {
-        self::generate_summary( $conv_id );
+        global $wpdb;
+        $lock = 'cp-summary-' . md5($wpdb->prefix . $conv_id);
+        if ('1' !== (string)$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock))) return;
+        try { self::generate_summary($conv_id); } finally { $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock)); }
+    }
+    public static function schedule_summary(string $conv_id) {
+        global $wpdb;
+        $count = CoachPro_DB::count('messages', array('conversation_id'=>$conv_id));
+        $table = CoachPro_DB::table('conv_summaries');
+        $done = (int)$wpdb->get_var($wpdb->prepare("SELECT message_count_at_summary FROM {$table} WHERE conversation_id = %s", $conv_id));
+        if ($count - $done >= 20 && !wp_next_scheduled('coachpro_summarize', array($conv_id))) wp_schedule_single_event(time()+30, 'coachpro_summarize', array($conv_id));
     }
 
     // -------------------------------------------------------------------------
@@ -258,32 +272,36 @@ class CoachPro_AI_Provider {
     }
 
     private static function force_summarize_and_trim( string $conv_id, array $messages ) : array {
-        self::generate_summary( $conv_id );
-        // Keep only last 10 messages + summary
-        $recent = array_slice( $messages, -10 );
-        return self::prepend_summary( $conv_id, $recent );
+        self::run_summary_cron( $conv_id );
+        $systems = array_values(array_filter($messages, function($m) { return 'system' === $m['role'] && 0 !== strpos($m['content'], 'Conversation summary so far:'); }));
+        $recent = array_slice(array_values(array_filter($messages, function($m) { return 'system' !== $m['role']; })), -10);
+        return self::prepend_summary($conv_id, array_merge($systems, $recent));
     }
 
     private static function generate_summary( string $conv_id ) : void {
         global $wpdb;
         $t_msg = CoachPro_DB::table( 'messages' );
 
-        // Get last 40 messages
+        if (!CoachPro_DB::get_row('conversations', $conv_id)) return;
+        $t_sum = CoachPro_DB::table('conv_summaries');
+        $previous = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$t_sum} WHERE conversation_id = %s", $conv_id), ARRAY_A);
+        $offset = $previous ? (int)$previous['message_count_at_summary'] : 0;
+        // Process only the next batch, carrying prior memory forward.
         $rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $wpdb->prepare( "SELECT role, content FROM `{$t_msg}` WHERE conversation_id = %s ORDER BY created_at ASC LIMIT 40", $conv_id ),
+            $wpdb->prepare( "SELECT role, content FROM `{$t_msg}` WHERE conversation_id = %s ORDER BY created_at ASC, id ASC LIMIT 40 OFFSET %d", $conv_id, $offset ),
             ARRAY_A
         );
 
         if ( empty( $rows ) ) return;
 
-        $text = '';
+        $text = $previous ? 'Previous summary: ' . $previous['summary'] . "\n\n" : '';
         foreach ( $rows as $r ) {
             $text .= strtoupper( $r['role'] ) . ': ' . $r['content'] . "\n\n";
         }
 
         // Use the cheapest active model for summarization
         $t_models = CoachPro_DB::table( 'ai_models' );
-        $model    = $wpdb->get_row( "SELECT * FROM `{$t_models}` WHERE is_active = 1 ORDER BY credits_cost ASC LIMIT 1", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $model    = $wpdb->get_row( "SELECT * FROM `{$t_models}` WHERE is_active = 1 AND category <> 'image' AND api_key_secret_name IN (SELECT option_name FROM {$wpdb->options} WHERE option_value <> '') ORDER BY credits_cost ASC LIMIT 1", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         if ( ! $model ) return;
 
@@ -303,21 +321,22 @@ class CoachPro_AI_Provider {
             $result = self::call_openai_compatible( $model['api_base_url'], $api_key, $model['api_model_name'], $messages );
         }
 
-        if ( is_wp_error( $result ) ) return;
+        if ( is_wp_error( $result ) || '' === trim($result) || !CoachPro_DB::get_row('conversations', $conv_id) ) return;
 
         $t_sum = CoachPro_DB::table( 'conv_summaries' );
         $existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM `{$t_sum}` WHERE conversation_id = %s", $conv_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
         if ( $existing ) {
-            $wpdb->update( $t_sum, array( 'summary' => $result, 'message_count_at_summary' => count( $rows ) ), array( 'conversation_id' => $conv_id ) );
+            $wpdb->update( $t_sum, array( 'summary' => $result, 'message_count_at_summary' => $offset + count( $rows ) ), array( 'conversation_id' => $conv_id ) );
         } else {
             $wpdb->insert( $t_sum, array(
                 'id'                            => wp_generate_uuid4(),
                 'conversation_id'               => $conv_id,
                 'summary'                       => $result,
-                'message_count_at_summary'      => count( $rows ),
+                'message_count_at_summary'      => $offset + count( $rows ),
             ) );
         }
+        self::schedule_summary($conv_id);
     }
 
     private static function parse_openai_response( $response ) {

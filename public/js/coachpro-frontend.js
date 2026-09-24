@@ -17,6 +17,10 @@
       var raw = el.getAttribute('data-config') || '{}';
       var cfg = {};
       try { cfg = JSON.parse(raw); } catch (e) { console.error('CoachPro config parse error', e); }
+      var query = new URLSearchParams(window.location.search);
+      cfg.projectId = query.get('project_id') || cfg.projectId;
+      cfg.convId = query.get('conversation_id') || '';
+      cfg.assistantId = query.get('assistant_id') || '';
       cfg.view = el.getAttribute('data-view') || cfg.view || 'dashboard';
       cfg.theme = el.getAttribute('data-theme') || cfg.theme || 'light';
       el.setAttribute('data-theme', cfg.theme);
@@ -66,6 +70,16 @@
       },
     };
     if (body) opts.body = JSON.stringify(body);
+    var listPath = /^(projects|conversations|saved-responses|payments|transactions)(\?|$)/.test(path) && path.indexOf('page=') === -1 && (!method || method === 'GET');
+    function fetchPage(target) { return fetch(target, opts).then(function(r) { return r.json().then(function(data) { if (!r.ok) return Promise.reject(data); return data; }); }); }
+    function remaining(rows, page) {
+      if (!Array.isArray(rows) || rows.length < 100) return Promise.resolve(rows);
+      return fetchPage(url + (url.indexOf('?') === -1 ? '?' : '&') + 'page=' + page).then(function(next) {
+        if (next.length < 100) return rows.concat(next);
+        return remaining(next, page + 1).then(function(rest) { return rows.concat(rest); });
+      });
+    }
+    if (listPath) return fetchPage(url).then(function(rows) { return remaining(rows, 2); });
     return fetch(url, opts).then(function (r) {
       return r.json().then(function (data) {
         if (!r.ok) return Promise.reject(data);
@@ -566,6 +580,44 @@
   /* -----------------------------------------------------------------------
    * View: Dashboard
    * --------------------------------------------------------------------- */
+  function chatRequestId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = window.crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+      return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+
+  // Keep uncertain requests on the same conversation and ID across button retries/renders.
+  function sendQuickChat(cfg, text, assistantId, projectId) {
+    var attempt = cfg.quickChatAttempt;
+    if (attempt && attempt.pending) return attempt.pending;
+    if (!attempt || attempt.text !== text || attempt.assistantId !== assistantId || (attempt.initialProjectId !== projectId && attempt.projectId !== projectId)) {
+      attempt = { text: text, assistantId: assistantId, initialProjectId: projectId, projectId: projectId, conversationId: '', requestId: chatRequestId() };
+      cfg.quickChatAttempt = attempt;
+    }
+    function send() {
+      return api(cfg, 'chat', 'POST', { conversation_id: attempt.conversationId, request_id: attempt.requestId, message: attempt.text });
+    }
+    attempt.pending = Promise.resolve().then(function() {
+      if (attempt.projectId) return;
+      return api(cfg, 'projects', 'POST', { name: 'Quick Chat', description: 'Auto-created for quick dashboard chat' }).then(function(p) { attempt.projectId = p.id; });
+    }).then(function() {
+      if (attempt.conversationId) return;
+      return api(cfg, 'conversations', 'POST', { project_id: attempt.projectId, assistant_id: attempt.assistantId, title: 'New conversation' }).then(function(c) { attempt.conversationId = c.id; });
+    }).then(function() {
+      return send().catch(function(error) {
+        // Only the server's terminal failed state proves a fresh charge is safe.
+        if (!error || error.code !== 'request_failed') throw error;
+        attempt.requestId = chatRequestId();
+        return send();
+      });
+    }).then(function() {
+      cfg.quickChatAttempt = null;
+      return { projectId: attempt.projectId, conversationId: attempt.conversationId, assistantId: attempt.assistantId };
+    }).finally(function() { attempt.pending = null; });
+    return attempt.pending;
+  }
+
   function renderDashboard(el_container, cfg) {
     el_container.innerHTML = '';
     el_container.appendChild(navBar(cfg, 'dashboard'));
@@ -589,7 +641,11 @@
       cfg.assistantId = assistantId || '';
 
       if (cfg.pageUrls && cfg.pageUrls.chat) {
-        window.location.href = cfg.pageUrls.chat;
+        var target = new URL(cfg.pageUrls.chat, window.location.href);
+        if (projectId) target.searchParams.set('project_id', projectId);
+        if (convId) target.searchParams.set('conversation_id', convId);
+        if (assistantId) target.searchParams.set('assistant_id', assistantId);
+        window.location.href = target.href;
         return;
       }
 
@@ -606,9 +662,9 @@
       var projects = Array.isArray(results[1]) ? results[1] : [];
       var assistantsRaw = Array.isArray(results[2]) ? results[2] : [];
       var assistants = assistantsRaw.filter(function (a) {
-        return String(a.is_activated) === '1' || a.is_activated === true;
+        return Number(a.is_prebuilt) !== 1 || String(a.is_activated) === '1' || a.is_activated === true;
       });
-      if (!assistants.length) assistants = assistantsRaw.slice(0, 6);
+
       var selectedAssistant = assistants[0] || null;
 
       main.innerHTML = '';
@@ -697,7 +753,7 @@
 
       quickSend.addEventListener('click', function () {
         var text = quickInput.value.trim();
-        if (!text) return;
+        if (!text || quickSend.disabled) return;
         if (!selectedAssistant) {
           alert('Please activate an assistant first.');
           return;
@@ -706,25 +762,8 @@
         quickSend.disabled = true;
         quickSend.textContent = 'Starting…';
 
-        var ensureProject = Promise.resolve((cfg.projectId || (projects[0] && projects[0].id) || ''));
-        if (!projects.length && !cfg.projectId) {
-          ensureProject = api(cfg, 'projects', 'POST', { name: 'Quick Chat', description: 'Auto-created for quick dashboard chat' })
-            .then(function (p) { return p.id; });
-        }
-
-        ensureProject.then(function (projectId) {
-          return api(cfg, 'conversations', 'POST', {
-            project_id: projectId,
-            assistant_id: selectedAssistant.id,
-            title: 'New conversation'
-          }).then(function (conv) {
-            return api(cfg, 'conversations/' + conv.id + '/messages', 'POST', {
-              role: 'user',
-              content: text
-            }).then(function () {
-              goToChat(projectId, conv.id, selectedAssistant.id);
-            });
-          });
+        sendQuickChat(cfg, text, selectedAssistant.id, cfg.projectId || (projects[0] && projects[0].id) || '').then(function (result) {
+          goToChat(result.projectId, result.conversationId, result.assistantId);
         }).catch(function (e) {
           showError(quick, (e && e.message) || 'Unable to start quick chat.');
           quickSend.disabled = false;
@@ -855,6 +894,15 @@
           });
         });
         var actions = el('div', 'cp-card-actions');
+        var editBtn = btn('Edit', 'cp-btn-outline cp-btn-sm');
+        editBtn.addEventListener('click', function() {
+          var name = window.prompt('Project name', p.name);
+          if (!name || !name.trim()) return;
+          var description = window.prompt('Description', p.description || '');
+          if (description === null) return;
+          api(cfg, 'projects/' + p.id, 'PUT', {name:name, description:description}).then(function() {renderProjects(el_container,cfg);}).catch(function(e) {showError(main,e.message);});
+        });
+        actions.appendChild(editBtn);
         actions.appendChild(chatBtn);
         actions.appendChild(delBtn);
         card.appendChild(actions);
@@ -892,18 +940,21 @@
       var descIn    = textarea('Short description');
       var promptIn  = textarea('System prompt (instructions for the AI)');
       promptIn.rows = 6;
+      var startersIn = textarea('Conversation starters (one per line)');
+      var editingId = '';
       var saveBtn   = btn('Create', 'cp-btn-primary');
       var cancelBtn = btn('Cancel', '');
-      [nameIn, descIn, promptIn, saveBtn, cancelBtn].forEach(function (n) { formWrap.appendChild(n); });
+      [nameIn, descIn, promptIn, startersIn, saveBtn, cancelBtn].forEach(function (n) { formWrap.appendChild(n); });
       main.appendChild(formWrap);
 
-      newBtn.addEventListener('click', function () { formWrap.classList.toggle('cp-hidden'); });
+      newBtn.addEventListener('click', function () { editingId=''; nameIn.value=''; descIn.value=''; promptIn.value=''; startersIn.value=''; saveBtn.textContent='Create'; formWrap.classList.remove('cp-hidden'); });
       cancelBtn.addEventListener('click', function () { formWrap.classList.add('cp-hidden'); });
       saveBtn.addEventListener('click', function () {
-        api(cfg, 'assistants', 'POST', {
+        api(cfg, editingId ? 'assistants/' + editingId : 'assistants', editingId ? 'PUT' : 'POST', {
           name: nameIn.value,
           description: descIn.value,
           system_prompt: promptIn.value,
+          conversation_starters: startersIn.value.split('\n').map(function(v) {return v.trim();}).filter(Boolean),
         }).then(function () { renderAssistants(el_container, cfg); })
           .catch(function (e) { showError(main, (e && e.message) || 'Failed to create assistant.'); });
       });
@@ -911,14 +962,19 @@
       var grid = el('div', 'cp-cards-grid');
       assistants.forEach(function (a) {
         var activated = String(a.is_activated) === '1' || a.is_activated === true;
+        var suspended = Number(a.is_activation_suspended) === 1;
         var card = el('div', 'cp-card cp-assistant-card');
         card.innerHTML = '<div class="cp-assistant-icon">' + escHtml(a.icon || '🤖') + '</div>' +
-          '<h3>' + escHtml(a.name) + (a.is_prebuilt ? ' <span class="cp-badge">Prebuilt</span>' : '') + '</h3>' +
+          '<h3>' + escHtml(a.name) + (Number(a.is_prebuilt) === 1 ? ' <span class="cp-badge">Prebuilt</span>' : '') + '</h3>' +
           '<p>' + escHtml(a.description || '') + '</p>';
 
         var toggleBtn = btn(activated ? '✅ Activated' : 'Activate', activated ? 'cp-btn-outline' : 'cp-btn-primary');
+        if (suspended) {
+          card.appendChild(el('p', '', 'Paused by your plan. Your conversations are preserved; upgrade to restore access.'));
+          toggleBtn.textContent = 'Remove paused activation';
+        }
         toggleBtn.addEventListener('click', function () {
-          if (activated) {
+          if (activated || suspended) {
             api(cfg, 'assistants/' + a.id + '/activate', 'DELETE').then(function () { renderAssistants(el_container, cfg); });
           } else {
             api(cfg, 'assistants/' + a.id + '/activate', 'POST').then(function () { renderAssistants(el_container, cfg); })
@@ -929,7 +985,14 @@
         var cardActions = el('div', 'cp-card-actions');
         cardActions.appendChild(toggleBtn);
 
-        if (!a.is_prebuilt) {
+        if (Number(a.is_prebuilt) !== 1) {
+          var editBtn = btn('Edit', 'cp-btn-outline cp-btn-sm');
+          editBtn.addEventListener('click', function() {
+            editingId = a.id; nameIn.value = a.name; descIn.value = a.description || ''; promptIn.value = a.system_prompt || '';
+            try { startersIn.value = JSON.parse(a.conversation_starters || '[]').join('\n'); } catch(e) { startersIn.value = ''; }
+            saveBtn.textContent = 'Save'; formWrap.classList.remove('cp-hidden'); formWrap.scrollIntoView();
+          });
+          cardActions.appendChild(editBtn);
           var delBtn = btn('🗑', 'cp-btn-danger cp-btn-sm');
           delBtn.addEventListener('click', function () {
             if (!confirm('Delete assistant?')) return;
@@ -966,7 +1029,12 @@
       assistants: [],
       conversations: [],
       messages: [],
-      savedMap: {}
+      messagePage: 1,
+      hasOlder: false,
+      savedMap: {},
+      sending: false,
+      requestId: '',
+      requestText: ''
     };
 
     function getTextDir(text) {
@@ -1035,7 +1103,9 @@
       }
       return api(cfg, 'conversations?project_id=' + encodeURIComponent(state.projectId)).then(function (rows) {
         state.conversations = rows || [];
-        if (!state.convId && state.conversations.length) state.convId = state.conversations[0].id;
+        if (!state.conversations.some(function(c) { return c.id === state.convId; })) state.convId = state.conversations.length ? state.conversations[0].id : '';
+        var selected = selectedConversation();
+        if (selected) state.assistantId = selected.assistant_id;
       });
     }
 
@@ -1045,7 +1115,9 @@
         render();
         return Promise.resolve();
       }
-      return api(cfg, 'conversations/' + state.convId + '/messages').then(function (rows) {
+      state.messagePage = 1;
+      return api(cfg, 'conversations/' + state.convId + '/messages?per_page=100&page=1').then(function (rows) {
+        state.hasOlder = rows.length === 100;
         state.messages = rows || [];
       });
     }
@@ -1130,6 +1202,7 @@
       var assistantSel = select(state.assistants.map(function (a) { return { value: a.id, label: a.name }; }), state.assistantId || '');
       assistantSel.addEventListener('change', function () {
         state.assistantId = this.value;
+        state.convId = ''; state.messages = [];
         syncModelFromAssistant();
         render();
       });
@@ -1186,6 +1259,14 @@
       }
       area.appendChild(header);
 
+      if (state.hasOlder) {
+        var older = btn('Load older messages', 'cp-btn-outline');
+        older.addEventListener('click', function() {
+          older.disabled = true;
+          api(cfg, 'conversations/' + state.convId + '/messages?per_page=100&page=' + (state.messagePage + 1)).then(function(rows) { state.messagePage++; state.hasOlder = rows.length === 100; state.messages = rows.concat(state.messages); render(); }).catch(function(e) { older.disabled = false; showError(area,e.message); });
+        });
+        area.appendChild(older);
+      }
       var msgList = el('div', 'cp-msg-list');
       if (!state.messages.length && assistant) {
         var starters = el('div', 'cp-starter-chips');
@@ -1236,47 +1317,54 @@
 
       function handleSend() {
         var text = inputBox.value.trim();
-        if (!text) return;
-
+        if (!text || state.sending) return;
+        state.sending = true;
+        if (!state.requestId || state.requestText !== text) {
+          state.requestId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = window.crypto.getRandomValues(new Uint8Array(1))[0] & 15; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+          state.requestText = text;
+        }
         var ensure = state.convId ? Promise.resolve({ id: state.convId }) : createConversation('New conversation');
         ensure.then(function (convRow) {
-          if (!convRow || !convRow.id) return;
+          if (!convRow || !convRow.id) { state.sending = false; return; }
           var isFirst = !(state.messages || []).some(function (m) { return m.role === 'user'; });
 
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending…';
 
-          return api(cfg, 'conversations/' + convRow.id + '/messages', 'POST', {
-            role: 'user',
-            content: text
-          }).then(function () {
-            if (isFirst) {
-              return api(cfg, 'conversations/' + convRow.id, 'PUT', { title: text.slice(0, 50) });
-            }
-            return null;
-          }).catch(function () {
-            return null;
-          }).then(function () {
+          // ISSUE-02 fix: Do NOT separately POST to conversations/.../messages here.
+          // The /chat endpoint saves the user message atomically along with the AI response.
+          // Doing both caused every user message to be duplicated in the database.
+
+          // Optionally auto-title the conversation on first message.
+          var titlePromise = isFirst
+            ? api(cfg, 'conversations/' + convRow.id, 'PUT', { title: text.slice(0, 50) }).catch(function () { return null; })
+            : Promise.resolve(null);
+
+          return titlePromise.then(function () {
             return api(cfg, 'chat', 'POST', {
               conversation_id: convRow.id,
+              request_id: state.requestId,
               model_id: state.modelId || cfg.defaultModelId || 'gpt-4o-mini',
               message: text
             });
           }).then(function (resp) {
-            state.credits = Number(resp.balance || (state.credits - Number(resp.credits_used || 0)) || 0);
+            state.credits = Number(resp.balance);
+            state.requestId = '';
             inputBox.value = '';
             return loadConversations().then(loadMessages).then(refreshSavedMap).then(render);
           }).catch(function (e) {
+            if (e && e.code) state.requestId = '';
             if (e && e.code === 'chat_too_long') {
               showTooLongDialog();
             } else {
               alert((e && e.message) || 'Failed to send message.');
             }
           }).finally(function () {
+            state.sending = false;
             sendBtn.disabled = false;
             sendBtn.textContent = 'Send ➤';
           });
-        });
+        }).catch(function(e) { state.sending = false; alert((e && e.message) || 'Unable to create conversation.'); });
       }
 
       sendBtn.addEventListener('click', handleSend);
@@ -1303,9 +1391,9 @@
       state.credits = Number(user.credits || 0);
       state.projects = results[1] || [];
       state.assistants = (results[2] || []).filter(function (a) {
-        return String(a.is_activated) === '1' || a.is_activated === true;
+        return Number(a.is_prebuilt) !== 1 || String(a.is_activated) === '1' || a.is_activated === true;
       });
-      if (!state.assistants.length) state.assistants = results[2] || [];
+
 
       if (!state.projectId && state.projects.length) state.projectId = state.projects[0].id;
       if (!state.assistantId && state.assistants.length) state.assistantId = state.assistants[0].id;
@@ -1321,93 +1409,6 @@
     });
   }
 
-  function renderChatMessages(chatArea, cfg, state) {
-    chatArea.innerHTML = '';
-
-    var msgList = el('div', 'cp-msg-list');
-    chatArea.appendChild(msgList);
-
-    function renderMessages() {
-      msgList.innerHTML = '';
-      state.messages.forEach(function (m) {
-        var bubble = el('div', 'cp-msg cp-msg-' + escHtml(m.role));
-        bubble.innerHTML = '<div class="cp-msg-content">' + escHtml(m.content) + '</div>' +
-          '<div class="cp-msg-meta">' + escHtml(m.role) + (m.model_id ? ' · ' + escHtml(m.model_id) : '') + '</div>';
-
-        if (m.role === 'assistant') {
-          var saveBtn = document.createElement('button');
-          saveBtn.className = 'cp-save-btn';
-          saveBtn.textContent = '🔖 Save';
-          saveBtn.addEventListener('click', function () {
-            api(cfg, 'saved-responses', 'POST', { message_id: m.id }).then(function () {
-              saveBtn.textContent = '✅ Saved';
-            }).catch(function (e) {
-              alert((e && e.message) || 'Failed to save.');
-            });
-          });
-          bubble.appendChild(saveBtn);
-        }
-        msgList.appendChild(bubble);
-      });
-      msgList.scrollTop = msgList.scrollHeight;
-    }
-
-    renderMessages();
-
-    // Input area
-    var inputArea = el('div', 'cp-chat-input-area');
-    var msgInput  = textarea('Type your message…');
-    msgInput.rows = 3;
-    var sendBtn   = btn('Send ➤', 'cp-btn-primary');
-    inputArea.appendChild(msgInput);
-    inputArea.appendChild(sendBtn);
-    chatArea.appendChild(inputArea);
-
-    sendBtn.addEventListener('click', function () {
-      var text = msgInput.value.trim();
-      if (!text || !state.convId) return;
-
-      sendBtn.disabled = true;
-      sendBtn.textContent = 'Sending…';
-
-      var userMsg = { role: 'user', content: text, id: 'tmp-' + Date.now() };
-      state.messages.push(userMsg);
-      renderMessages();
-      msgInput.value = '';
-
-      api(cfg, 'chat', 'POST', {
-        conversation_id: state.convId,
-        model_id:        state.modelId || cfg.defaultModelId || 'gpt-4o-mini',
-        message:         text,
-      }).then(function (resp) {
-        state.messages.push({
-          id:      resp.message_id,
-          role:    'assistant',
-          content: resp.content,
-          model_id: resp.model_id,
-        });
-        renderMessages();
-        sendBtn.disabled = false;
-        sendBtn.textContent = 'Send ➤';
-      }).catch(function (e) {
-        alert((e && e.message) || 'Chat failed. Check your credits or API key.');
-        sendBtn.disabled = false;
-        sendBtn.textContent = 'Send ➤';
-      });
-    });
-
-    // Allow Enter to send (Shift+Enter for newline)
-    msgInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendBtn.click();
-      }
-    });
-  }
-
-  /* -----------------------------------------------------------------------
-   * View: Saved Responses
-   * --------------------------------------------------------------------- */
   function renderSaved(el_container, cfg) {
     el_container.innerHTML = '';
     el_container.appendChild(navBar(cfg, 'saved'));
@@ -1458,6 +1459,7 @@
     Promise.all([
       api(cfg, 'plans'),
       api(cfg, 'credit-packs'),
+      api(cfg, 'payments'),
     ]).then(function (results) {
       var plans = results[0] || [];
       var packs = results[1] || [];
@@ -1470,8 +1472,8 @@
       plans.forEach(function (plan) {
         var features = [];
         try { features = JSON.parse(plan.features || '[]'); } catch (e) {}
-        var card = el('div', 'cp-plan-card' + (plan.is_popular ? ' cp-plan-popular' : ''));
-        if (plan.is_popular) card.innerHTML = '<div class="cp-plan-badge">Most Popular</div>';
+        var card = el('div', 'cp-plan-card' + (Number(plan.is_popular) === 1 ? ' cp-plan-popular' : ''));
+        if (Number(plan.is_popular) === 1) card.innerHTML = '<div class="cp-plan-badge">Most Popular</div>';
         card.innerHTML += '<h3>' + escHtml(plan.name) + '</h3>' +
           '<div class="cp-plan-price">₨ ' + escHtml(String(plan.price_pkr)) + '/mo</div>' +
           '<div class="cp-plan-credits">' + escHtml(String(plan.monthly_credits)) + ' credits/month</div>' +
@@ -1494,8 +1496,8 @@
       main.appendChild(el('h2', 'cp-heading', '🪙 Credit Packs'));
       var packsGrid = el('div', 'cp-plans-grid');
       packs.forEach(function (pack) {
-        var card = el('div', 'cp-plan-card' + (pack.is_popular ? ' cp-plan-popular' : ''));
-        if (pack.is_popular) card.innerHTML = '<div class="cp-plan-badge">Best Value</div>';
+        var card = el('div', 'cp-plan-card' + (Number(pack.is_popular) === 1 ? ' cp-plan-popular' : ''));
+        if (Number(pack.is_popular) === 1) card.innerHTML = '<div class="cp-plan-badge">Best Value</div>';
         card.innerHTML += '<h3>' + escHtml(pack.name) + '</h3>' +
           '<div class="cp-plan-price">₨ ' + escHtml(String(pack.price_pkr)) + '</div>' +
           '<div class="cp-plan-credits">' + escHtml(String(pack.credits)) + ' credits</div>';
@@ -1517,11 +1519,37 @@
         '<li>Fill in the payment form with your transaction details.</li>' +
         '<li>Admin will approve within 24 hours and your credits will be added.</li>' +
         '</ol>';
+      var accounts = cfg.paymentDetails || {};
+      Object.keys(accounts).forEach(function(method) { if (accounts[method]) infoSection.appendChild(el('p', '', '<strong>' + escHtml(method.replace('_', ' ')) + ':</strong> ' + escHtml(accounts[method]))); });
       main.appendChild(infoSection);
+      var history = el('div', 'cp-card');
+      history.appendChild(el('h3', '', 'Payment history'));
+      (results[2] || []).forEach(function(payment) {
+        var row = el('div', 'cp-payment-history');
+        row.appendChild(el('p', '', escHtml(payment.created_at + ' | PKR ' + payment.amount_pkr + ' | ' + payment.status)));
+        if (payment.admin_notes) row.appendChild(el('p', '', escHtml(payment.admin_notes)));
+        if (payment.proof_url) { var link = document.createElement('a'); link.href = payment.proof_url; link.textContent = 'View proof'; link.target = '_blank'; link.rel = 'noopener'; row.appendChild(link); }
+        if (payment.status === 'pending') {
+          var proof = input('file', 'Proof'); proof.accept = '.jpg,.jpeg,.png,.pdf';
+          var upload = btn('Upload / replace proof', 'cp-btn-outline cp-btn-sm');
+          upload.addEventListener('click', function() { upload.disabled = true; uploadProof(cfg,payment.id,proof.files[0]).then(function(){renderBuyCredits(el_container,cfg);}).catch(function(e){upload.disabled=false;showError(row,e.message);}); });
+          row.appendChild(proof); row.appendChild(upload);
+        }
+        history.appendChild(row);
+      });
+      if (!(results[2] || []).length) history.appendChild(el('p','','No payment requests yet.'));
+      main.appendChild(history);
 
     }).catch(function (e) {
       showError(main, (e && e.message) || 'Failed to load.');
     });
+  }
+
+  function uploadProof(cfg, paymentId, file) {
+    if (!file) return Promise.reject({message:'Choose a JPG, PNG, or PDF file.'});
+    if (file.size > 5 * 1024 * 1024) return Promise.reject({message:'Proof must be smaller than 5 MB.'});
+    var body = new FormData(); body.append('proof',file);
+    return fetch(cfg.restUrl.replace(/\/$/,'') + '/payments/' + paymentId + '/upload-proof', {method:'POST',headers:{'X-WP-Nonce':cfg.wpNonce},body:body}).then(function(r){return r.json().then(function(data){if(!r.ok)return Promise.reject(data);return data;});});
   }
 
   function showPaymentForm(container, cfg, kind, planId, packId, amount, itemName) {
@@ -1542,11 +1570,16 @@
     var senderPhone = input('tel',  'Your phone / JazzCash / EasyPaisa number');
     var refNo       = input('text', 'Transaction / Reference number');
     var notes       = textarea('Additional notes (optional)');
+    var proofIn = input('file', 'Proof (optional)'); proofIn.accept = '.jpg,.jpeg,.png,.pdf';
+    var submittedPaymentId = '';
+    var account = el('p', '', '');
+    function showAccount() { account.textContent = (cfg.paymentDetails || {})[methodSel.value] || 'Contact support for payment details before sending money.'; }
+    methodSel.addEventListener('change',showAccount); showAccount();
     var submitBtn   = btn('Submit Payment Request', 'cp-btn-primary cp-full');
     var errDiv      = el('div', 'cp-error cp-hidden');
     var successDiv  = el('div', 'cp-success cp-hidden');
 
-    [methodSel, senderName, senderPhone, refNo, notes, errDiv, successDiv, submitBtn].forEach(function (n) {
+    [methodSel, account, senderName, senderPhone, refNo, notes, el('label','cp-label','Payment proof (optional, JPG/PNG/PDF, max 5 MB)'), proofIn, errDiv, successDiv, submitBtn].forEach(function (n) {
       form.appendChild(n);
     });
 
@@ -1554,7 +1587,7 @@
       submitBtn.disabled = true;
       errDiv.classList.add('cp-hidden');
 
-      api(cfg, 'payments', 'POST', {
+      (submittedPaymentId ? Promise.resolve({id:submittedPaymentId}) : api(cfg, 'payments', 'POST', {
         kind:         kind,
         plan_id:      planId,
         pack_id:      packId,
@@ -1564,6 +1597,9 @@
         sender_phone: senderPhone.value,
         reference_no: refNo.value,
         notes:        notes.value,
+      })).then(function(payment) {
+        submittedPaymentId = payment.id;
+        return proofIn.files[0] ? uploadProof(cfg,payment.id,proofIn.files[0]) : Promise.resolve();
       }).then(function () {
         successDiv.textContent = '✅ Payment request submitted! Admin will review within 24 hours.';
         successDiv.classList.remove('cp-hidden');
@@ -1599,18 +1635,25 @@
       var nameIn  = input('text', 'Display name', user.name || '');
       var emailIn = input('email', 'Email', user.email || '');
       var passIn  = input('password', 'New password (leave blank to keep current)');
+      var currentPassIn = input('password', 'Current password (required for email/password changes)');
       var saveBtn = btn('Save Changes', 'cp-btn-primary');
       var errDiv  = el('div', 'cp-error cp-hidden');
 
       [el('label', 'cp-label', 'Display Name'), nameIn,
        el('label', 'cp-label', 'Email'), emailIn,
-       el('label', 'cp-label', 'Password'), passIn,
+       el('label', 'cp-label', 'Current Password'), currentPassIn,
+       el('label', 'cp-label', 'New Password'), passIn,
        errDiv, saveBtn].forEach(function (n) { form.appendChild(n); });
 
       saveBtn.addEventListener('click', function () {
-        var payload = { display_name: nameIn.value, email: emailIn.value };
+        var payload = { display_name: nameIn.value };
+        if (emailIn.value !== user.email) payload.email = emailIn.value;
+        if (currentPassIn.value) payload.current_password = currentPassIn.value;
         if (passIn.value) payload.password = passIn.value;
-        api(cfg, 'profile', 'PUT', payload).then(function () {
+        api(cfg, 'profile', 'PUT', payload).then(function (updated) {
+          user = updated;
+          cfg.wpNonce = updated.nonce || cfg.wpNonce;
+          passIn.value = ''; currentPassIn.value = '';
           errDiv.classList.add('cp-hidden');
           showSuccess(form, 'Profile updated!');
         }).catch(function (e) {

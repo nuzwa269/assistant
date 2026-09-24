@@ -35,6 +35,8 @@ class CoachPro_Loader {
         // On new user registration: bonus credits + role
         add_action( 'user_register', array( 'CoachPro_Auth', 'on_user_register' ) );
 
+        add_filter('option_page_capability_coachpro_settings_group', function() { return 'coachpro_admin'; });
+
         // Admin panel
         if ( is_admin() ) {
             add_action( 'admin_menu', array( 'CoachPro_Admin', 'add_menu' ) );
@@ -44,6 +46,9 @@ class CoachPro_Loader {
             add_action( 'admin_post_coachpro_reject_payment',  array( 'CoachPro_Admin', 'handle_reject_payment' ) );
             add_action( 'admin_post_coachpro_adjust_credits',  array( 'CoachPro_Admin', 'handle_adjust_credits' ) );
         }
+
+        add_action( 'coachpro_maintenance', array( 'CoachPro_Chat_API', 'recover_pending' ) );
+        if ( ! wp_next_scheduled('coachpro_maintenance') ) wp_schedule_event(time() + 300, 'hourly', 'coachpro_maintenance');
 
         // Cron: rolling summary
         add_action( 'coachpro_summarize', array( 'CoachPro_AI_Provider', 'run_summary_cron' ) );
@@ -90,6 +95,34 @@ class CoachPro_Loader {
             return;
         }
 
+        // Only redirect on CoachPro-specific pages; never lock down the whole site.
+        // Collect all page IDs configured for CoachPro.
+        $coachpro_page_options = array(
+            'coachpro_page_login', 'coachpro_page_register', 'coachpro_page_dashboard',
+            'coachpro_page_projects', 'coachpro_page_chat', 'coachpro_page_assistants',
+            'coachpro_page_saved', 'coachpro_page_buy_credits', 'coachpro_page_settings',
+            'coachpro_page_transactions', 'coachpro_page_help',
+        );
+        $coachpro_page_ids = array();
+        foreach ( $coachpro_page_options as $opt ) {
+            $pid = (int) get_option( $opt, 0 );
+            if ( $pid ) {
+                $coachpro_page_ids[] = $pid;
+            }
+        }
+
+        // If the current page is not a CoachPro page, do not redirect.
+        if ( $current_id && ! in_array( $current_id, $coachpro_page_ids, true ) ) {
+            // Also check if the page content contains a CoachPro shortcode as a fallback.
+            $post = get_post( $current_id );
+            if ( ! $post || ! self::page_has_coachpro_shortcode( $post->post_content ) ) {
+                return;
+            }
+        } elseif ( ! $current_id ) {
+            // Non-singular context (archive, search, etc.) — don't redirect.
+            return;
+        }
+
         /**
          * Filter whether unauthenticated users should be redirected to the CoachPro login page.
          *
@@ -133,5 +166,26 @@ class CoachPro_Loader {
 
         wp_safe_redirect( $login_url );
         exit;
+    }
+
+    /**
+     * Check whether a post's content contains any CoachPro shortcode.
+     *
+     * @param string $content Post content.
+     * @return bool
+     */
+    private static function page_has_coachpro_shortcode( string $content ) : bool {
+        $coachpro_shortcodes = array(
+            'coachpro', 'coachpro_dashboard', 'coachpro_chat', 'coachpro_projects',
+            'coachpro_assistants', 'coachpro_saved', 'coachpro_buy_credits',
+            'coachpro_settings', 'coachpro_login', 'coachpro_register',
+            'coachpro_transactions', 'coachpro_help',
+        );
+        foreach ( $coachpro_shortcodes as $tag ) {
+            if ( has_shortcode( $content, $tag ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 }

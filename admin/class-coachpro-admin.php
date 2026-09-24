@@ -17,21 +17,21 @@ class CoachPro_Admin {
         add_menu_page(
             __( 'CoachPro AI', 'coachpro-ai' ),
             __( 'CoachPro AI', 'coachpro-ai' ),
-            'manage_options',
+            'coachpro_admin',
             'coachpro-ai',
             array( __CLASS__, 'page_dashboard' ),
             'dashicons-awards',
             56
         );
 
-        add_submenu_page( 'coachpro-ai', __( 'Dashboard', 'coachpro-ai' ),  __( 'Dashboard', 'coachpro-ai' ),  'manage_options', 'coachpro-ai',           array( __CLASS__, 'page_dashboard' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Users', 'coachpro-ai' ),      __( 'Users', 'coachpro-ai' ),      'manage_options', 'coachpro-users',         array( __CLASS__, 'page_users' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Payments', 'coachpro-ai' ),   __( 'Payments', 'coachpro-ai' ),   'manage_options', 'coachpro-payments',      array( __CLASS__, 'page_payments' ) );
-        add_submenu_page( 'coachpro-ai', __( 'AI Models', 'coachpro-ai' ),  __( 'AI Models', 'coachpro-ai' ),  'manage_options', 'coachpro-models',        array( __CLASS__, 'page_models' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Prebuilt Assistants', 'coachpro-ai' ), __( 'Prebuilt Assistants', 'coachpro-ai' ), 'manage_options', 'coachpro-assistants', array( __CLASS__, 'page_assistants' ) );
-        add_submenu_page( 'coachpro-ai', __( 'AI Providers', 'coachpro-ai' ), __( 'AI Providers', 'coachpro-ai' ), 'manage_options', 'coachpro-ai-providers', array( __CLASS__, 'page_ai_providers' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Plans & Packs', 'coachpro-ai' ), __( 'Plans & Packs', 'coachpro-ai' ), 'manage_options', 'coachpro-plans',   array( __CLASS__, 'page_plans' ) );
-        add_submenu_page( 'coachpro-ai', __( 'Settings', 'coachpro-ai' ),   __( 'Settings', 'coachpro-ai' ),   'manage_options', 'coachpro-settings',     array( __CLASS__, 'page_settings' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Dashboard', 'coachpro-ai' ),  __( 'Dashboard', 'coachpro-ai' ),  'coachpro_admin', 'coachpro-ai',           array( __CLASS__, 'page_dashboard' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Users', 'coachpro-ai' ),      __( 'Users', 'coachpro-ai' ),      'coachpro_admin', 'coachpro-users',         array( __CLASS__, 'page_users' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Payments', 'coachpro-ai' ),   __( 'Payments', 'coachpro-ai' ),   'coachpro_admin', 'coachpro-payments',      array( __CLASS__, 'page_payments' ) );
+        add_submenu_page( 'coachpro-ai', __( 'AI Models', 'coachpro-ai' ),  __( 'AI Models', 'coachpro-ai' ),  'coachpro_admin', 'coachpro-models',        array( __CLASS__, 'page_models' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Prebuilt Assistants', 'coachpro-ai' ), __( 'Prebuilt Assistants', 'coachpro-ai' ), 'coachpro_admin', 'coachpro-assistants', array( __CLASS__, 'page_assistants' ) );
+        add_submenu_page( 'coachpro-ai', __( 'AI Providers', 'coachpro-ai' ), __( 'AI Providers', 'coachpro-ai' ), 'coachpro_admin', 'coachpro-ai-providers', array( __CLASS__, 'page_ai_providers' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Plans & Packs', 'coachpro-ai' ), __( 'Plans & Packs', 'coachpro-ai' ), 'coachpro_admin', 'coachpro-plans',   array( __CLASS__, 'page_plans' ) );
+        add_submenu_page( 'coachpro-ai', __( 'Settings', 'coachpro-ai' ),   __( 'Settings', 'coachpro-ai' ),   'coachpro_admin', 'coachpro-settings',     array( __CLASS__, 'page_settings' ) );
     }
 
     // -------------------------------------------------------------------------
@@ -39,9 +39,6 @@ class CoachPro_Admin {
     // -------------------------------------------------------------------------
     public static function register_settings() {
         $settings = array(
-            'coachpro_openai_key',
-            'coachpro_anthropic_key',
-            'coachpro_gemini_key',
             'coachpro_openrouter_key',
             'coachpro_google_client_id',
             'coachpro_google_client_secret',
@@ -53,6 +50,8 @@ class CoachPro_Admin {
         foreach ( $settings as $key ) {
             register_setting( 'coachpro_settings_group', $key, array( 'sanitize_callback' => 'sanitize_text_field' ) );
         }
+
+        register_setting('coachpro_settings_group', 'coachpro_delete_data_on_uninstall', array('sanitize_callback'=>'absint', 'default'=>0));
 
         $page_settings = array(
             'coachpro_page_login',
@@ -101,7 +100,7 @@ class CoachPro_Admin {
     }
 
     public static function enqueue_assets() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( 'coachpro_admin' ) ) {
             return;
         }
 
@@ -144,93 +143,27 @@ class CoachPro_Admin {
     // -------------------------------------------------------------------------
     // admin-post handlers
     // -------------------------------------------------------------------------
-    public static function handle_approve_payment() {
-        check_admin_referer( 'coachpro_approve_payment' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
-
-        $id = sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) );
-        if ( $id ) {
-            global $wpdb;
-            $t_pay   = CoachPro_DB::table( 'payments' );
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $payment = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$t_pay}` WHERE id = %s", $id ), ARRAY_A );
-
-            if ( $payment && 'pending' === $payment['status'] ) {
-                $admin_notes = sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) );
-                $wpdb->update(
-                    $t_pay,
-                    array(
-                        'status'      => 'approved',
-                        'reviewed_by' => get_current_user_id(),
-                        'reviewed_at' => current_time( 'mysql' ),
-                        'admin_notes' => $admin_notes,
-                    ),
-                    array( 'id' => $id ),
-                    array( '%s', '%d', '%s', '%s' ),
-                    array( '%s' )
-                );
-                $user_id = (int) $payment['user_id'];
-                if ( 'credit_pack' === $payment['kind'] && $payment['pack_id'] ) {
-                    $pack = CoachPro_DB::get_row( 'credit_packs', $payment['pack_id'] );
-                    if ( $pack ) {
-                        CoachPro_Credits::add( $user_id, (int) $pack['credits'], 'pack_purchase', $id, 'Credit pack purchase approved' );
-                    }
-                } elseif ( 'subscription' === $payment['kind'] && $payment['plan_id'] ) {
-                    $plan = CoachPro_DB::get_row( 'plans', $payment['plan_id'] );
-                    update_user_meta( $user_id, 'coachpro_plan', $payment['plan_id'] );
-                    update_user_meta( $user_id, 'coachpro_plan_renews', gmdate( 'Y-m-d H:i:s', time() + ( 30 * DAY_IN_SECONDS ) ) );
-                    if ( $plan ) {
-                        CoachPro_Credits::add( $user_id, (int) $plan['monthly_credits'], 'subscription_grant', $id, 'Subscription activated: ' . $payment['plan_id'] );
-                    }
-                }
-            }
-        }
-
-        wp_redirect( admin_url( 'admin.php?page=coachpro-payments&message=approved' ) );
+    private static function review_payment( string $status ) {
+        check_admin_referer( 'coachpro_' . ( 'approved' === $status ? 'approve' : 'reject' ) . '_payment' );
+        $result = CoachPro_Payments::review( sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) ), $status, sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) ) );
+        if ( is_wp_error( $result ) ) wp_die( esc_html( $result->get_error_message() ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=coachpro-payments&message=' . $status ) );
         exit;
     }
-
-    public static function handle_reject_payment() {
-        check_admin_referer( 'coachpro_reject_payment' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
-
-        $id = sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) );
-        if ( $id ) {
-            global $wpdb;
-            $t_pay   = CoachPro_DB::table( 'payments' );
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $payment = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$t_pay}` WHERE id = %s", $id ), ARRAY_A );
-            if ( $payment && 'pending' === $payment['status'] ) {
-                $admin_notes = sanitize_textarea_field( wp_unslash( $_POST['admin_notes'] ?? '' ) );
-                $wpdb->update(
-                    $t_pay,
-                    array(
-                        'status'      => 'rejected',
-                        'reviewed_by' => get_current_user_id(),
-                        'reviewed_at' => current_time( 'mysql' ),
-                        'admin_notes' => $admin_notes,
-                    ),
-                    array( 'id' => $id ),
-                    array( '%s', '%d', '%s', '%s' ),
-                    array( '%s' )
-                );
-            }
-        }
-
-        wp_redirect( admin_url( 'admin.php?page=coachpro-payments&message=rejected' ) );
-        exit;
-    }
+    public static function handle_approve_payment() { self::review_payment( 'approved' ); }
+    public static function handle_reject_payment() { self::review_payment( 'rejected' ); }
 
     public static function handle_adjust_credits() {
         check_admin_referer( 'coachpro_adjust_credits' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+        if ( ! current_user_can( 'coachpro_admin' ) ) wp_die( 'Unauthorized' );
 
         $user_id     = absint( wp_unslash( $_POST['user_id'] ?? 0 ) );
         $new_credits = absint( wp_unslash( $_POST['credits'] ?? 0 ) );
         $notes       = sanitize_text_field( wp_unslash( $_POST['notes'] ?? '' ) );
 
         if ( $user_id ) {
-            CoachPro_Credits::set( $user_id, $new_credits, $notes ?: 'Admin manual adjustment' );
+            $result = CoachPro_Credits::set( $user_id, $new_credits, $notes ?: 'Admin manual adjustment' );
+            if (is_wp_error($result)) wp_die(esc_html($result->get_error_message()));
         }
 
         wp_redirect( admin_url( 'admin.php?page=coachpro-users&message=adjusted' ) );

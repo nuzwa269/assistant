@@ -1,6 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+if ( ! current_user_can( 'coachpro_admin' ) ) wp_die( 'Unauthorized' );
 ?>
 <div class="wrap">
     <h1><?php esc_html_e( 'CoachPro AI — Settings', 'coachpro-ai' ); ?></h1>
@@ -78,6 +78,9 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
                 </td>
             </tr>
         </table>
+
+        <h2>Data retention</h2>
+        <p><input type="hidden" name="coachpro_delete_data_on_uninstall" value="0"><label><input type="checkbox" name="coachpro_delete_data_on_uninstall" value="1" <?php checked(get_option('coachpro_delete_data_on_uninstall',0),1); ?>> Permanently delete CoachPro data, settings, and plugin-created pages when uninstalling. Leave unchecked to retain data.</label></p>
 
         <h2><?php esc_html_e( 'Page Assignments', 'coachpro-ai' ); ?></h2>
         <p class="description">

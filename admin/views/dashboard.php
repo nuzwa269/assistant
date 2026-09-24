@@ -1,6 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+if ( ! current_user_can( 'coachpro_admin' ) ) wp_die( 'Unauthorized' );
 
 global $wpdb;
 $t_msg = CoachPro_DB::table( 'messages' );

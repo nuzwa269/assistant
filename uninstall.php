@@ -1,53 +1,25 @@
 <?php
-/**
- * Fired when the plugin is uninstalled.
- *
- * @package CoachPro_AI_Assistant
- */
-
-if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) exit;
-
+/** Retain data by default; permanent cleanup is an explicit site setting. */
+if (!defined('WP_UNINSTALL_PLUGIN')) exit;
+wp_unschedule_hook('coachpro_summarize');
+wp_unschedule_hook('coachpro_maintenance');
+if (!get_option('coachpro_delete_data_on_uninstall', 0)) return;
 global $wpdb;
-
-// Drop all plugin tables
-$tables = array(
-    'coachpro_ai_models',
-    'coachpro_assistants',
-    'coachpro_user_active_assistants',
-    'coachpro_projects',
-    'coachpro_conversations',
-    'coachpro_messages',
-    'coachpro_conv_summaries',
-    'coachpro_saved_responses',
-    'coachpro_plans',
-    'coachpro_credit_packs',
-    'coachpro_payments',
-    'coachpro_transactions',
-);
-
-foreach ( $tables as $table ) {
-    $wpdb->query( "DROP TABLE IF EXISTS `{$wpdb->prefix}{$table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$tables = array('ai_models','assistants','user_active_assistants','projects','conversations','messages','conv_summaries','saved_responses','plans','credit_packs','payments','transactions','chat_requests');
+foreach ($tables as $table) $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}coachpro_{$table}`");
+$pages = get_posts(array('post_type'=>'page','post_status'=>'any','numberposts'=>-1,'meta_key'=>'_coachpro_created_page','meta_value'=>'1','fields'=>'ids'));
+foreach ($pages as $page) wp_delete_post($page, true);
+$prefix = $wpdb->esc_like('coachpro_') . '%';
+foreach ($wpdb->get_col($wpdb->prepare("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $prefix)) as $option) delete_option($option);
+$users = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key LIKE %s", $prefix));
+$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE %s", $prefix));
+foreach ($users as $id) {
+    $user = new WP_User($id);
+    $user->remove_role('coachpro_user');
+    $user->remove_role('coachpro_admin');
+    wp_cache_delete($id, 'user_meta');
 }
-
-// Delete all plugin options
-$options = array(
-    'coachpro_openai_key',
-    'coachpro_anthropic_key',
-    'coachpro_gemini_key',
-    'coachpro_openrouter_key',
-    'coachpro_jazzcash_no',
-    'coachpro_easypaisa_no',
-    'coachpro_bank_details',
-    'coachpro_signup_bonus',
-    'coachpro_db_version',
-);
-foreach ( $options as $option ) {
-    delete_option( $option );
-}
-
-// Remove all user meta with coachpro_ prefix
-$wpdb->query( "DELETE FROM `{$wpdb->usermeta}` WHERE meta_key LIKE 'coachpro_%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-
-// Remove custom roles
-remove_role( 'coachpro_user' );
-remove_role( 'coachpro_admin' );
+$admin = get_role('administrator');
+if ($admin) $admin->remove_cap('coachpro_admin');
+remove_role('coachpro_user');
+remove_role('coachpro_admin');
