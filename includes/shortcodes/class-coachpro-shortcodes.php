@@ -106,6 +106,7 @@ class CoachPro_Shortcodes {
             'projectId'      => sanitize_text_field( $atts['project_id'] ),
             'supabaseUrl'    => null,
             'pluginUrl'      => COACHPRO_PLUGIN_URL,
+            'paymentDetails' => array('jazzcash'=>get_option('coachpro_jazzcash_no',''), 'easypaisa'=>get_option('coachpro_easypaisa_no',''), 'bank_transfer'=>get_option('coachpro_bank_details','')),
             'googleClientId' => ! empty( get_option( 'coachpro_google_client_id', '' ) ),
             // Page URLs for JS navigation
             'pageUrls'       => array(
@@ -128,7 +129,7 @@ class CoachPro_Shortcodes {
             '<div class="coachpro-app" data-view="%s" data-theme="%s" data-config=\'%s\' %s></div>',
             esc_attr( $view ),
             esc_attr( $atts['theme'] ),
-            $config,
+            esc_attr($config),
             $style
         );
     }

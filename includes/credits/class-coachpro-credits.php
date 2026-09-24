@@ -1,169 +1,87 @@
 <?php
-/**
- * Class CoachPro_Credits
- * Atomic credits management with transaction logging.
- *
- * @package CoachPro_AI_Assistant
- */
-
+/** Credit ledger and plan entitlements. */
 if ( ! defined( 'ABSPATH' ) ) exit;
-
 class CoachPro_Credits {
-
-    /**
-     * Get current credit balance for a user.
-     */
     public static function get_balance( int $user_id ) : int {
         return (int) get_user_meta( $user_id, 'coachpro_credits', true );
     }
-
-    /**
-     * Add credits to a user's balance and log a transaction.
-     *
-     * @param int         $user_id
-     * @param int         $amount       Positive integer.
-     * @param string      $kind         Transaction kind.
-     * @param string|null $reference_id Related payment / pack ID.
-     * @param string|null $notes
-     * @return int New balance.
-     */
-    public static function add( int $user_id, int $amount, string $kind, ?string $reference_id = null, ?string $notes = null ) : int {
+    private static function change( int $user_id, int $amount, string $kind, ?string $reference_id, ?string $model_id, ?string $notes, bool $absolute = false ) {
+        return CoachPro_DB::transaction( function() use ( $user_id, $amount, $kind, $reference_id, $model_id, $notes, $absolute ) {
+            global $wpdb;
+            $old = self::get_balance( $user_id );
+            $balance = $absolute ? max( 0, $amount ) : $old + $amount;
+            if ( $balance < 0 ) return new WP_Error( 'insufficient_credits', 'Insufficient credits.', array( 'status' => 402 ) );
+            $delta = $balance - $old;
+            if ( 0 === $delta ) return $balance;
+            if ( false === update_user_meta( $user_id, 'coachpro_credits', $balance ) ) return CoachPro_DB::write_error();
+            $written = $wpdb->insert( CoachPro_DB::table( 'transactions' ), array(
+                'id' => wp_generate_uuid4(), 'user_id' => $user_id, 'amount' => $delta,
+                'kind' => $kind, 'balance_after' => $balance, 'reference_id' => $reference_id,
+                'model_id' => $model_id, 'notes' => $notes,
+            ) );
+            return false === $written ? CoachPro_DB::write_error() : $balance;
+        }, $user_id );
+    }
+    public static function add( int $user_id, int $amount, string $kind, ?string $reference_id = null, ?string $notes = null ) {
+        return self::change( $user_id, max( 0, $amount ), $kind, $reference_id, null, $notes );
+    }
+    public static function deduct( int $user_id, int $cost, string $message_id, string $model_id ) {
+        return self::change( $user_id, -max( 0, $cost ), 'message_deduct', $message_id, $model_id, null );
+    }
+    public static function set( int $user_id, int $new_balance, string $notes = '' ) {
+        return self::change( $user_id, $new_balance, 'admin_adjust', null, null, $notes, true );
+    }
+    /** Paid plans renew manually; free allowances are granted once per current 30-day cycle, without backfill. */
+    public static function refresh_plan( int $user_id ) {
+        return CoachPro_DB::transaction( function() use ( $user_id ) {
+            $plan_id = get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free';
+            $expiry = get_user_meta( $user_id, 'coachpro_plan_renews', true );
+            $plan = CoachPro_DB::get_row( 'plans', $plan_id );
+            if ( 'free' !== $plan_id && ( ! $plan || ! $expiry || strtotime( $expiry . ' UTC' ) <= time() ) ) {
+                update_user_meta( $user_id, 'coachpro_plan', 'free' );
+                update_user_meta( $user_id, 'coachpro_plan_renews', '' );
+                $plan_id = 'free';
+            }
+            if ( 'free' === $plan_id ) {
+                $next = (int) get_user_meta( $user_id, 'coachpro_free_credits_next', true );
+                if ( $next <= time() ) {
+                    $free = CoachPro_DB::get_row( 'plans', 'free' );
+                    if ( $free ) {
+                        $result = self::add( $user_id, (int) $free['monthly_credits'], 'subscription_grant', null, 'Free plan monthly allowance' );
+                        if ( is_wp_error( $result ) ) return $result;
+                    }
+                    if ( false === update_user_meta( $user_id, 'coachpro_free_credits_next', time() + 30 * DAY_IN_SECONDS ) ) return CoachPro_DB::write_error();
+                }
+            }
+            return CoachPro_DB::get_row( 'plans', $plan_id );
+        }, $user_id );
+    }
+    private static function within_limit( int $user_id, string $field, string $table, array $where ) : bool {
+        $plan = self::refresh_plan( $user_id );
+        if ( is_wp_error( $plan ) || ! $plan ) return false;
+        return null === $plan[$field] || CoachPro_DB::count( $table, $where ) < (int) $plan[$field];
+    }
+    public static function can_create_project( int $id ) : bool {
+        return self::within_limit( $id, 'max_projects', 'projects', array( 'user_id' => $id ) );
+    }
+    public static function can_create_assistant( int $id ) : bool {
+        return self::within_limit( $id, 'max_custom_assistants', 'assistants', array( 'owner_id' => $id, 'is_prebuilt' => 0 ) );
+    }
+    public static function can_save_response( int $id ) : bool {
+        return self::within_limit( $id, 'max_saved_responses', 'saved_responses', array( 'user_id' => $id ) );
+    }
+    public static function can_activate_prebuilt( int $id ) : bool {
         global $wpdb;
-
-        $amount = abs( $amount );
-
-        // Atomic increment — avoids race condition from read-modify-write.
-        $wpdb->query( $wpdb->prepare(
-            "UPDATE {$wpdb->usermeta}
-             SET meta_value = CAST(meta_value AS SIGNED) + %d
-             WHERE user_id = %d AND meta_key = 'coachpro_credits'",
-            $amount,
-            $user_id
-        ) );
-
-        // Ensure the meta row exists if user has never had credits set.
-        if ( ! $wpdb->rows_affected ) {
-            update_user_meta( $user_id, 'coachpro_credits', $amount );
-        }
-
-        $new_balance = self::get_balance( $user_id );
-        self::log_transaction( $user_id, $amount, $kind, $new_balance, $reference_id, null, $notes );
-
-        return $new_balance;
+        $plan = self::refresh_plan( $id );
+        if ( is_wp_error( $plan ) || ! $plan ) return false;
+        if ( null === $plan['max_active_assistants'] ) return true;
+        $count = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . CoachPro_DB::table('user_active_assistants') . ' ua INNER JOIN ' . CoachPro_DB::table('assistants') . ' a ON a.id = ua.assistant_id WHERE ua.user_id = %d AND a.is_prebuilt = 1', $id ) );
+        return (int) $count < (int) $plan['max_active_assistants'];
     }
-
-    /**
-     * Deduct credits. Returns false if insufficient balance.
-     *
-     * @param int    $user_id
-     * @param int    $cost
-     * @param string $message_id UUID of the message.
-     * @param string $model_id
-     * @return bool
-     */
-    public static function deduct( int $user_id, int $cost, string $message_id, string $model_id ) : bool {
-        global $wpdb;
-
-        if ( $cost <= 0 ) {
-            return true;
-        }
-
-        // Atomic conditional decrement — only updates if balance is sufficient.
-        // The WHERE clause prevents double-spending under concurrent requests.
-        $updated = $wpdb->query( $wpdb->prepare(
-            "UPDATE {$wpdb->usermeta}
-             SET meta_value = CAST(meta_value AS SIGNED) - %d
-             WHERE user_id = %d
-               AND meta_key = 'coachpro_credits'
-               AND CAST(meta_value AS SIGNED) >= %d",
-            $cost,
-            $user_id,
-            $cost
-        ) );
-
-        if ( ! $updated ) {
-            // No row was updated — either insufficient balance or row missing.
-            return false;
-        }
-
-        $new_balance = self::get_balance( $user_id );
-        self::log_transaction( $user_id, -$cost, 'message_deduct', $new_balance, $message_id, $model_id, null );
-
-        return true;
-    }
-
-    /**
-     * Directly set credits (admin adjust).
-     */
-    public static function set( int $user_id, int $new_balance, string $notes = '' ) : void {
-        $old = self::get_balance( $user_id );
-        $diff = $new_balance - $old;
-        update_user_meta( $user_id, 'coachpro_credits', $new_balance );
-        self::log_transaction( $user_id, $diff, 'admin_adjust', $new_balance, null, null, $notes );
-    }
-
-    /**
-     * Log a transaction to the transactions table.
-     */
-    public static function log_transaction( int $user_id, int $amount, string $kind, int $balance_after, ?string $reference_id, ?string $model_id, ?string $notes ) : void {
-        global $wpdb;
-        $wpdb->insert(
-            CoachPro_DB::table( 'transactions' ),
-            array(
-                'id'           => wp_generate_uuid4(),
-                'user_id'      => $user_id,
-                'amount'       => $amount,
-                'kind'         => $kind,
-                'balance_after'=> $balance_after,
-                'reference_id' => $reference_id,
-                'model_id'     => $model_id,
-                'notes'        => $notes,
-            ),
-            array( '%s', '%d', '%d', '%s', '%d', '%s', '%s', '%s' )
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // Plan limit checks
-    // -------------------------------------------------------------------------
-
-    /**
-     * Check if user can create more projects.
-     */
-    public static function can_create_project( int $user_id ) : bool {
-        $plan = get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free';
-        if ( 'free' !== $plan ) return true;
-        $count = CoachPro_DB::count( 'projects', array( 'user_id' => $user_id ) );
-        return $count < 3;
-    }
-
-    /**
-     * Check if user can create more custom assistants.
-     */
-    public static function can_create_assistant( int $user_id ) : bool {
-        $plan = get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free';
-        if ( 'free' !== $plan ) return true;
-        $count = CoachPro_DB::count( 'assistants', array( 'owner_id' => $user_id, 'is_prebuilt' => 0 ) );
-        return $count < 1;
-    }
-
-    /**
-     * Check if user can save more responses.
-     */
-    public static function can_save_response( int $user_id ) : bool {
-        $plan = get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free';
-        if ( 'free' !== $plan ) return true;
-        $count = CoachPro_DB::count( 'saved_responses', array( 'user_id' => $user_id ) );
-        return $count < 10;
-    }
-
-    /**
-     * Check if user can activate more prebuilt assistants (free: max 1).
-     */
-    public static function can_activate_prebuilt( int $user_id ) : bool {
-        $plan = get_user_meta( $user_id, 'coachpro_plan', true ) ?: 'free';
-        if ( 'free' !== $plan ) return true;
-        $count = CoachPro_DB::count( 'user_active_assistants', array( 'user_id' => $user_id ) );
-        return $count < 1;
+    public static function can_use_model( int $user_id, array $model ) : bool {
+        $plan = self::refresh_plan( $user_id );
+        if ( is_wp_error( $plan ) || ! $plan ) return false;
+        $ranks = array( 'free' => 0, 'basic' => 1, 'pro' => 2 );
+        return (int) $plan['model_access_level'] >= ( $ranks[$model['min_plan']] ?? 2 );
     }
 }

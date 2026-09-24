@@ -36,7 +36,10 @@ class CoachPro_Profile_API {
         $args = array( 'ID' => $user_id );
 
         // Require current password verification before allowing sensitive field updates.
-        $changing_sensitive = ! empty( $params['password'] ) || ! empty( $params['email'] );
+        $user = get_userdata($user_id);
+        $changing_email = isset($params['email']) && $params['email'] !== $user->user_email;
+        if ($changing_email && ! is_email($params['email'])) return new WP_Error('invalid_email', 'Enter a valid email.', array('status'=>400));
+        $changing_sensitive = ! empty( $params['password'] ) || $changing_email;
         if ( $changing_sensitive ) {
             $current_password = $params['current_password'] ?? '';
             if ( empty( $current_password ) ) {
@@ -64,6 +67,7 @@ class CoachPro_Profile_API {
             return $result;
         }
 
+        if (!empty($params['password'])) { wp_set_current_user($user_id); wp_set_auth_cookie($user_id, true); }
         return rest_ensure_response( CoachPro_Auth::user_data( $user_id ) );
     }
 
@@ -71,9 +75,10 @@ class CoachPro_Profile_API {
     // Transactions
     // -------------------------------------------------------------------------
     public static function get_transactions( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         $user_id = get_current_user_id();
         // Always filter by the authenticated user. Admins use /admin/* routes for global views.
-        $rows    = CoachPro_DB::get_rows( 'transactions', array( 'user_id' => $user_id ), 'created_at DESC', 50 );
+        $rows    = CoachPro_DB::get_rows( 'transactions', array( 'user_id' => $user_id ), 'created_at DESC', $limit, $offset );
         return rest_ensure_response( $rows );
     }
 
@@ -81,6 +86,7 @@ class CoachPro_Profile_API {
     // Saved Responses
     // -------------------------------------------------------------------------
     public static function get_saved_responses( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         global $wpdb;
         $user_id = get_current_user_id();
 
@@ -95,8 +101,8 @@ class CoachPro_Profile_API {
              LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
              WHERE sr.user_id = %d
              ORDER BY sr.created_at DESC
-             LIMIT 100",
-            $user_id
+             LIMIT %d OFFSET %d",
+            $user_id, $limit, $offset
         ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
         return rest_ensure_response( $rows );
@@ -107,7 +113,7 @@ class CoachPro_Profile_API {
         $params  = $request->get_json_params();
 
         if ( ! CoachPro_Credits::can_save_response( $user_id ) ) {
-            return new WP_Error( 'limit_reached', __( 'Free plan allows max 10 saved responses. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            return new WP_Error( 'limit_reached', __( 'Your plan limit has been reached. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $message_id = sanitize_text_field( $params['message_id'] ?? '' );
@@ -123,15 +129,17 @@ class CoachPro_Profile_API {
             return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
+        $conversation = CoachPro_DB::get_row('conversations', $message['conversation_id']);
+        if (!$conversation || (int)$conversation['user_id'] !== $user_id) return new WP_Error('forbidden','Access denied.',array('status'=>403));
         global $wpdb;
         $id = wp_generate_uuid4();
-        $result = $wpdb->insert(
+        $result = CoachPro_DB::insert(
             CoachPro_DB::table( 'saved_responses' ),
             array(
                 'id'         => $id,
                 'user_id'    => $user_id,
                 'message_id' => $message_id,
-                'project_id' => sanitize_text_field( $params['project_id'] ?? '' ) ?: null,
+                'project_id' => $conversation['project_id'],
                 'note'       => sanitize_textarea_field( $params['note'] ?? '' ),
             ),
             array( '%s', '%d', '%s', '%s', '%s' )
@@ -157,7 +165,7 @@ class CoachPro_Profile_API {
         }
 
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'saved_responses' ), array( 'id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'saved_responses' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 }

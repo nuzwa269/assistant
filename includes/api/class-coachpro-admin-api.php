@@ -113,8 +113,8 @@ class CoachPro_Admin_API {
         global $wpdb;
         $table = CoachPro_DB::table( 'ai_models' );
 
-        $wpdb->query( "UPDATE `{$table}` SET is_default = 0" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $wpdb->update(
+        CoachPro_DB::query( "UPDATE `{$table}` SET is_default = 0" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        CoachPro_DB::update(
             $table,
             array(
                 'is_default' => 1,
@@ -262,12 +262,14 @@ class CoachPro_Admin_API {
         $id     = absint( $request->get_param( 'id' ) );
         $params = $request->get_json_params();
 
-        if ( isset( $params['plan'] ) && in_array( $params['plan'], array( 'free', 'basic', 'pro' ), true ) ) {
+        if ( isset( $params['plan'] ) && CoachPro_DB::get_row('plans', sanitize_text_field($params['plan'])) ) {
+            update_user_meta($id, 'coachpro_plan_renews', 'free' === $params['plan'] ? '' : gmdate('Y-m-d H:i:s', time() + 30 * DAY_IN_SECONDS));
             update_user_meta( $id, 'coachpro_plan', $params['plan'] );
         }
         if ( isset( $params['credits'] ) ) {
             $new_credits = absint( $params['credits'] );
-            CoachPro_Credits::set( $id, $new_credits, 'Admin adjustment via REST API' );
+            $result = CoachPro_Credits::set( $id, $new_credits, 'Admin adjustment via REST API' );
+            if (is_wp_error($result)) return $result;
         }
 
         return rest_ensure_response( array( 'updated' => true ) );
@@ -284,85 +286,10 @@ class CoachPro_Admin_API {
     }
 
     public static function approve_payment( WP_REST_Request $request ) {
-        $id      = sanitize_text_field( $request->get_param( 'id' ) );
-        $payment = CoachPro_DB::get_row( 'payments', $id );
-
-        if ( ! $payment ) {
-            return new WP_Error( 'not_found', 'Payment not found.', array( 'status' => 404 ) );
-        }
-        if ( 'pending' !== $payment['status'] ) {
-            return new WP_Error( 'already_processed', 'Payment already processed.', array( 'status' => 409 ) );
-        }
-
-        global $wpdb;
-        $admin_id    = get_current_user_id();
-        $params      = $request->get_json_params();
-        $admin_notes = sanitize_textarea_field( $params['admin_notes'] ?? '' );
-
-        $wpdb->update(
-            CoachPro_DB::table( 'payments' ),
-            array(
-                'status'      => 'approved',
-                'reviewed_by' => $admin_id,
-                'reviewed_at' => current_time( 'mysql' ),
-                'admin_notes' => $admin_notes,
-            ),
-            array( 'id' => $id ),
-            array( '%s', '%d', '%s', '%s' ),
-            array( '%s' )
-        );
-
-        // Grant credits or activate plan
-        $user_id = (int) $payment['user_id'];
-        if ( 'credit_pack' === $payment['kind'] && $payment['pack_id'] ) {
-            $pack = CoachPro_DB::get_row( 'credit_packs', $payment['pack_id'] );
-            if ( $pack ) {
-                CoachPro_Credits::add( $user_id, (int) $pack['credits'], 'pack_purchase', $id, 'Credit pack purchase approved' );
-            }
-        } elseif ( 'subscription' === $payment['kind'] && $payment['plan_id'] ) {
-            $plan = CoachPro_DB::get_row( 'plans', $payment['plan_id'] );
-            update_user_meta( $user_id, 'coachpro_plan', $payment['plan_id'] );
-
-            // Extend from the current expiry if it's still in the future; otherwise extend from now.
-            // This prevents wiping out remaining subscription days on early renewal.
-            $current_renews = get_user_meta( $user_id, 'coachpro_plan_renews', true );
-            $current_expiry_ts = $current_renews ? strtotime( $current_renews ) : 0;
-            $base_ts = max( time(), (int) $current_expiry_ts );
-            update_user_meta( $user_id, 'coachpro_plan_renews', gmdate( 'Y-m-d H:i:s', $base_ts + ( 30 * DAY_IN_SECONDS ) ) );
-            if ( $plan ) {
-                CoachPro_Credits::add( $user_id, (int) $plan['monthly_credits'], 'subscription_grant', $id, 'Subscription activated: ' . $payment['plan_id'] );
-            }
-        }
-
-        return rest_ensure_response( array( 'approved' => true ) );
+        return CoachPro_Payments::review( sanitize_text_field( $request['id'] ), 'approved', sanitize_textarea_field( $request->get_param('admin_notes') ?? '' ) );
     }
-
     public static function reject_payment( WP_REST_Request $request ) {
-        $id      = sanitize_text_field( $request->get_param( 'id' ) );
-        $payment = CoachPro_DB::get_row( 'payments', $id );
-
-        if ( ! $payment ) {
-            return new WP_Error( 'not_found', 'Payment not found.', array( 'status' => 404 ) );
-        }
-
-        $params      = $request->get_json_params();
-        $admin_notes = sanitize_textarea_field( $params['admin_notes'] ?? '' );
-
-        global $wpdb;
-        $wpdb->update(
-            CoachPro_DB::table( 'payments' ),
-            array(
-                'status'      => 'rejected',
-                'reviewed_by' => get_current_user_id(),
-                'reviewed_at' => current_time( 'mysql' ),
-                'admin_notes' => $admin_notes,
-            ),
-            array( 'id' => $id ),
-            array( '%s', '%d', '%s', '%s' ),
-            array( '%s' )
-        );
-
-        return rest_ensure_response( array( 'rejected' => true ) );
+        return CoachPro_Payments::review( sanitize_text_field( $request['id'] ), 'rejected', sanitize_textarea_field( $request->get_param('admin_notes') ?? '' ) );
     }
 
     // -------------------------------------------------------------------------
@@ -405,7 +332,7 @@ class CoachPro_Admin_API {
         }
 
         global $wpdb;
-        $wpdb->replace(
+        CoachPro_DB::replace(
             CoachPro_DB::table( 'ai_models' ),
             $data
         );
@@ -459,7 +386,7 @@ class CoachPro_Admin_API {
         if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
 
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'ai_models' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'ai_models' ), $data, array( 'id' => $id ) );
         if ( ! empty( $data['is_default'] ) ) {
             self::set_default_model( $id );
         } else {
@@ -477,7 +404,7 @@ class CoachPro_Admin_API {
         $id = sanitize_text_field( $request->get_param( 'id' ) );
         $row = CoachPro_DB::get_row( 'ai_models', $id );
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'ai_models' ), array( 'id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'ai_models' ), array( 'id' => $id ) );
         if ( $row && ! empty( $row['is_default'] ) ) {
             self::ensure_default_model();
         }
@@ -501,7 +428,7 @@ class CoachPro_Admin_API {
             $api_key = trim( (string) ( $providers[ $key ]['api_key'] ?? '' ) );
             if ( '' !== $api_key ) {
                 update_option( $definition['api_key_option'], sanitize_text_field( $api_key ), false );
-            } elseif ( array_key_exists( $key, $providers ) ) {
+            } elseif ( ! empty( $providers[ $key ]['clear_key'] ) ) {
                 // Explicit empty string submitted for this provider \u2014 clear the stored key.
                 delete_option( $definition['api_key_option'] );
             }
@@ -620,6 +547,7 @@ class CoachPro_Admin_API {
             'name'             => sanitize_text_field( $params['name'] ?? '' ),
             'description'      => sanitize_textarea_field( $params['description'] ?? '' ),
             'system_prompt'    => wp_kses_post( $params['system_prompt'] ?? '' ),
+            'conversation_starters' => wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', (array)($params['conversation_starters'] ?? array()))))),
             'icon'             => sanitize_text_field( $params['icon'] ?? 'Bot' ),
             'category'         => sanitize_text_field( $params['category'] ?? '' ),
             'is_prebuilt'      => 1,
@@ -635,10 +563,10 @@ class CoachPro_Admin_API {
         }
 
         global $wpdb;
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'assistants' ),
             $data,
-            array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%f', '%d', '%d' )
+            array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%f', '%d', '%d' )
         );
 
         return rest_ensure_response( CoachPro_DB::get_row( 'assistants', $id ) );
@@ -660,6 +588,7 @@ class CoachPro_Admin_API {
 
         if ( isset( $params['name'] ) )          $data['name']            = sanitize_text_field( $params['name'] );
         if ( isset( $params['description'] ) )   $data['description']     = sanitize_textarea_field( $params['description'] );
+        if (isset($params['conversation_starters'])) $data['conversation_starters'] = wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', (array)$params['conversation_starters']))));
         if ( isset( $params['system_prompt'] ) ) $data['system_prompt']   = wp_kses_post( $params['system_prompt'] );
         if ( isset( $params['icon'] ) )          $data['icon']            = sanitize_text_field( $params['icon'] );
         if ( isset( $params['category'] ) )      $data['category']        = sanitize_text_field( $params['category'] );
@@ -676,7 +605,7 @@ class CoachPro_Admin_API {
         if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
 
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'assistants' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'assistants' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'assistants', $id ) );
     }
 
@@ -695,7 +624,9 @@ class CoachPro_Admin_API {
             return new WP_Error( 'forbidden', 'Only prebuilt assistants can be deleted here.', array( 'status' => 403 ) );
         }
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'assistants' ), array( 'id' => $id ) );
+        if (CoachPro_DB::count('conversations', array('assistant_id'=>$id))) return new WP_Error('assistant_in_use', 'Deactivate assistants with existing conversations instead of deleting them.', array('status'=>409));
+        CoachPro_DB::delete(CoachPro_DB::table('user_active_assistants'), array('assistant_id'=>$id));
+        CoachPro_DB::delete( CoachPro_DB::table( 'assistants' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 
@@ -714,13 +645,15 @@ class CoachPro_Admin_API {
         $id     = sanitize_text_field( $params['id'] ?? wp_generate_uuid4() );
 
         global $wpdb;
-        $wpdb->replace(
+        CoachPro_DB::replace(
             CoachPro_DB::table( 'plans' ),
             array(
                 'id'                    => $id,
                 'name'                  => sanitize_text_field( $params['name'] ?? '' ),
                 'price_pkr'             => absint( $params['price_pkr'] ?? 0 ),
                 'monthly_credits'       => absint( $params['monthly_credits'] ?? 0 ),
+                'max_active_assistants' => isset($params['max_active_assistants']) ? absint($params['max_active_assistants']) : null,
+                'model_access_level' => max(0, min(2, (int)($params['model_access_level'] ?? 0))),
                 'max_projects'          => isset( $params['max_projects'] ) ? absint( $params['max_projects'] ) : null,
                 'max_custom_assistants' => isset( $params['max_custom_assistants'] ) ? absint( $params['max_custom_assistants'] ) : null,
                 'max_saved_responses'   => isset( $params['max_saved_responses'] ) ? absint( $params['max_saved_responses'] ) : null,
@@ -741,6 +674,10 @@ class CoachPro_Admin_API {
 
         $params = $request->get_json_params();
         $data   = array();
+        foreach (array('max_projects', 'max_custom_assistants', 'max_saved_responses', 'max_active_assistants') as $field) {
+            if (array_key_exists($field, $params)) $data[$field] = null === $params[$field] || '' === $params[$field] ? null : absint($params[$field]);
+        }
+        if (isset($params['model_access_level'])) $data['model_access_level'] = max(0, min(2, (int)$params['model_access_level']));
 
         if ( isset( $params['name'] ) )            $data['name']            = sanitize_text_field( $params['name'] );
         if ( isset( $params['price_pkr'] ) )       $data['price_pkr']       = absint( $params['price_pkr'] );
@@ -753,7 +690,7 @@ class CoachPro_Admin_API {
         if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
 
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'plans' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'plans' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'plans', $id ) );
     }
 
@@ -764,7 +701,8 @@ class CoachPro_Admin_API {
         $row = CoachPro_DB::get_row( 'plans', $id );
         if ( ! $row ) return new WP_Error( 'not_found', 'Plan not found.', array( 'status' => 404 ) );
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'plans' ), array( 'id' => $id ) );
+        if ('free' === $id || CoachPro_DB::count('payments', array('plan_id'=>$id)) || get_users(array('meta_key'=>'coachpro_plan', 'meta_value'=>$id, 'number'=>1, 'fields'=>'ID'))) return new WP_Error('plan_in_use', 'This plan is in use. Deactivate it to stop new purchases.', array('status'=>409));
+        CoachPro_DB::delete( CoachPro_DB::table( 'plans' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 
@@ -784,7 +722,7 @@ class CoachPro_Admin_API {
         $params = $request->get_json_params();
         $id     = sanitize_text_field( $params['id'] ?? wp_generate_uuid4() );
         global $wpdb;
-        $wpdb->replace(
+        CoachPro_DB::replace(
             CoachPro_DB::table( 'credit_packs' ),
             array(
                 'id'         => $id,
@@ -815,7 +753,7 @@ class CoachPro_Admin_API {
         if ( isset( $params['sort_order'] ) ) $data['sort_order'] = absint( $params['sort_order'] );
         if ( empty( $data ) ) return new WP_Error( 'nothing_to_update', 'No data.', array( 'status' => 400 ) );
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'credit_packs' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'credit_packs' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'credit_packs', $id ) );
     }
 
@@ -826,7 +764,8 @@ class CoachPro_Admin_API {
         $row = CoachPro_DB::get_row( 'credit_packs', $id );
         if ( ! $row ) return new WP_Error( 'not_found', 'Pack not found.', array( 'status' => 404 ) );
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'credit_packs' ), array( 'id' => $id ) );
+        if (CoachPro_DB::count('payments', array('pack_id'=>$id))) return new WP_Error('pack_in_use', 'This pack has payment history. Deactivate it instead.', array('status'=>409));
+        CoachPro_DB::delete( CoachPro_DB::table( 'credit_packs' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 }

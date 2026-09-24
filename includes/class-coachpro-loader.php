@@ -35,6 +35,8 @@ class CoachPro_Loader {
         // On new user registration: bonus credits + role
         add_action( 'user_register', array( 'CoachPro_Auth', 'on_user_register' ) );
 
+        add_filter('option_page_capability_coachpro_settings_group', function() { return 'coachpro_admin'; });
+
         // Admin panel
         if ( is_admin() ) {
             add_action( 'admin_menu', array( 'CoachPro_Admin', 'add_menu' ) );
@@ -44,6 +46,9 @@ class CoachPro_Loader {
             add_action( 'admin_post_coachpro_reject_payment',  array( 'CoachPro_Admin', 'handle_reject_payment' ) );
             add_action( 'admin_post_coachpro_adjust_credits',  array( 'CoachPro_Admin', 'handle_adjust_credits' ) );
         }
+
+        add_action( 'coachpro_maintenance', array( 'CoachPro_Chat_API', 'recover_pending' ) );
+        if ( ! wp_next_scheduled('coachpro_maintenance') ) wp_schedule_event(time() + 300, 'hourly', 'coachpro_maintenance');
 
         // Cron: rolling summary
         add_action( 'coachpro_summarize', array( 'CoachPro_AI_Provider', 'run_summary_cron' ) );

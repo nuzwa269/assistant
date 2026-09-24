@@ -23,9 +23,9 @@ class CoachPro_Assistants_API {
             return true;
         }
         if ( (int) $assistant['is_prebuilt'] === 1 ) {
-            return (int) $assistant['is_active'] === 1;
+            return (int) $assistant['is_active'] === 1 && CoachPro_DB::count('user_active_assistants', array('user_id'=>$user_id, 'assistant_id'=>$assistant['id'])) > 0;
         }
-        return (int) $assistant['owner_id'] === $user_id;
+        return (int) $assistant['owner_id'] === $user_id && (int)$assistant['is_active'] === 1;
     }
 
     public static function list_assistants( WP_REST_Request $request ) {
@@ -61,7 +61,7 @@ class CoachPro_Assistants_API {
         $params  = $request->get_json_params();
 
         if ( ! CoachPro_Credits::can_create_assistant( $user_id ) ) {
-            return new WP_Error( 'limit_reached', __( 'Free plan allows max 1 custom assistant. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            return new WP_Error( 'limit_reached', __( 'Your plan limit has been reached. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $name   = sanitize_text_field( $params['name'] ?? '' );
@@ -73,7 +73,7 @@ class CoachPro_Assistants_API {
 
         global $wpdb;
         $id = wp_generate_uuid4();
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'assistants' ),
             array(
                 'id'              => $id,
@@ -81,13 +81,14 @@ class CoachPro_Assistants_API {
                 'name'            => $name,
                 'description'     => sanitize_textarea_field( $params['description'] ?? '' ),
                 'system_prompt'   => $prompt,
+                'conversation_starters' => wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', (array)($params['conversation_starters'] ?? array()))))),
                 'icon'            => sanitize_text_field( $params['icon'] ?? 'Bot' ),
                 'category'        => sanitize_text_field( $params['category'] ?? '' ),
                 'is_prebuilt'     => 0,
                 'default_model_id'=> sanitize_text_field( $params['default_model_id'] ?? '' ),
                 'is_active'       => 1,
             ),
-            array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d' )
+            array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d' )
         );
 
         return rest_ensure_response( CoachPro_DB::get_row( 'assistants', $id ) );
@@ -105,6 +106,8 @@ class CoachPro_Assistants_API {
         $params = $request->get_json_params();
         $data   = array();
 
+        if (isset($params['conversation_starters'])) $data['conversation_starters'] = wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', (array)$params['conversation_starters']))));
+        if (isset($params['default_model_id'])) $data['default_model_id'] = sanitize_text_field($params['default_model_id']);
         if ( isset( $params['name'] ) )          $data['name']            = sanitize_text_field( $params['name'] );
         if ( isset( $params['description'] ) )   $data['description']     = sanitize_textarea_field( $params['description'] );
         if ( isset( $params['system_prompt'] ) ) $data['system_prompt']   = wp_kses_post( $params['system_prompt'] );
@@ -116,7 +119,7 @@ class CoachPro_Assistants_API {
         }
 
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'assistants' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'assistants' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'assistants', $id ) );
     }
 
@@ -130,7 +133,9 @@ class CoachPro_Assistants_API {
         }
 
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'assistants' ), array( 'id' => $id ) );
+        if (CoachPro_DB::count('conversations', array('assistant_id'=>$id))) return new WP_Error('assistant_in_use', 'Delete this assistant?s conversations first, or keep the assistant for their history.', array('status'=>409));
+        CoachPro_DB::delete(CoachPro_DB::table('user_active_assistants'), array('assistant_id'=>$id));
+        CoachPro_DB::delete( CoachPro_DB::table( 'assistants' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 
@@ -144,13 +149,14 @@ class CoachPro_Assistants_API {
         }
 
         // user_can_use() includes an admin (manage_options) bypass, so this covers both regular users and admins.
-        if ( ! CoachPro_Assistants_API::user_can_use( $assistant, $user_id ) ) {
+        if ( ! $assistant['is_active'] || (!(int)$assistant['is_prebuilt'] && (int)$assistant['owner_id'] !== $user_id) ) {
             return new WP_Error( 'forbidden', __( 'You do not have access to this assistant.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        // Check prebuilt activation limit for free users
+        if (CoachPro_DB::count('user_active_assistants', array('user_id'=>$user_id, 'assistant_id'=>$assistant_id))) return rest_ensure_response(array('activated'=>true));
+        // Check configured activation limit
         if ( $assistant['is_prebuilt'] && ! CoachPro_Credits::can_activate_prebuilt( $user_id ) ) {
-            return new WP_Error( 'limit_reached', __( 'Free plan allows 1 active prebuilt assistant. Upgrade to activate more.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            return new WP_Error( 'limit_reached', __( 'Your active assistant limit has been reached. Upgrade to activate more.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         global $wpdb;
@@ -161,7 +167,7 @@ class CoachPro_Assistants_API {
         ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         if ( ! $existing ) {
-            $wpdb->insert(
+            CoachPro_DB::insert(
                 CoachPro_DB::table( 'user_active_assistants' ),
                 array(
                     'id'           => wp_generate_uuid4(),
@@ -180,7 +186,7 @@ class CoachPro_Assistants_API {
         $assistant_id = sanitize_text_field( $request->get_param( 'id' ) );
 
         global $wpdb;
-        $wpdb->delete(
+        CoachPro_DB::delete(
             CoachPro_DB::table( 'user_active_assistants' ),
             array( 'user_id' => $user_id, 'assistant_id' => $assistant_id ),
             array( '%d', '%s' )

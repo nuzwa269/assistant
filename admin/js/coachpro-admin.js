@@ -142,6 +142,7 @@
             '</div>' +
             '<p><label><strong>Description</strong><textarea name="description" rows="3" class="large-text">' + escHtml(editing.description || '') + '</textarea></label></p>' +
             '<p><label><strong>System prompt</strong><textarea name="system_prompt" rows="8" class="large-text" required>' + escHtml(editing.system_prompt || '') + '</textarea></label></p>' +
+            '<p><label>Conversation starters (one per line)<textarea name="conversation_starters" rows="4" class="large-text">' + escHtml(JSON.parse(editing.conversation_starters || '[]').join('\n')) + '</textarea></label></p>' +
             '<p class="submit">' +
               '<button type="submit" class="button button-primary">' + escHtml(state.editingId ? 'Save assistant' : 'Create assistant') + '</button> ' +
               '<button type="button" class="button" id="coachpro-assistant-reset">Cancel</button>' +
@@ -187,6 +188,7 @@
           max_tokens: formData.get('max_tokens'),
           is_active: root.querySelector('[name="is_active"]').checked ? 1 : 0,
           description: formData.get('description'),
+          conversation_starters: String(formData.get('conversation_starters') || '').split('\n').filter(Boolean),
           system_prompt: formData.get('system_prompt')
         };
 
@@ -349,6 +351,7 @@
                     '<td>' + (provider.configured ? '<code>' + escHtml(provider.masked_key) + '</code>' : 'Not configured') + '</td>' +
                     '<td>' +
                       '<input type="password" class="regular-text" name="provider-' + escHtml(provider.id) + '" placeholder="' + escHtml(provider.masked_key || 'Enter API key') + '" autocomplete="off">' +
+                      '<label><input type="checkbox" name="clear-' + escHtml(provider.id) + '"> Remove saved key</label>' +
                       (showBaseUrl
                         ? '<p><label><small>Base URL</small><br><input type="text" class="regular-text" name="provider-' + escHtml(provider.id) + '-base_url" placeholder="https://example.com/v1" value="' + escHtml(provider.base_url || '') + '"></label></p>'
                         : '') +
@@ -432,7 +435,7 @@
         var payload = { providers: {} };
         providers.forEach(function (provider) {
           var input = root.querySelector('[name="provider-' + provider.id + '"]');
-          payload.providers[provider.id] = { api_key: input ? input.value.trim() : '' };
+          payload.providers[provider.id] = { api_key: input ? input.value.trim() : '', clear_key: root.querySelector('[name="clear-' + provider.id + '"]').checked };
           if (provider.requires_base_url || provider.id === 'custom') {
             var baseInput = root.querySelector('[name="provider-' + provider.id + '-base_url"]');
             payload.providers[provider.id].base_url = baseInput ? baseInput.value.trim() : '';
@@ -619,9 +622,11 @@
               '<p><label><strong>Name</strong><input type="text" name="name" class="regular-text" value="' + escHtml(editingPlan.name || '') + '" required></label></p>' +
               '<p><label><strong>Price (PKR)</strong><input type="number" name="price_pkr" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.price_pkr || '0') + '"></label></p>' +
               '<p><label><strong>Monthly Credits</strong><input type="number" name="monthly_credits" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.monthly_credits || '0') + '"></label></p>' +
-              '<p><label><strong>Max Projects</strong><input type="number" name="max_projects" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_projects || '') + '" placeholder="blank = unlimited"></label></p>' +
-              '<p><label><strong>Max Custom Assistants</strong><input type="number" name="max_custom_assistants" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_custom_assistants || '') + '" placeholder="blank = unlimited"></label></p>' +
-              '<p><label><strong>Max Saved Responses</strong><input type="number" name="max_saved_responses" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_saved_responses || '') + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Max Projects</strong><input type="number" name="max_projects" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_projects == null ? '' : editingPlan.max_projects) + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Max Custom Assistants</strong><input type="number" name="max_custom_assistants" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_custom_assistants == null ? '' : editingPlan.max_custom_assistants) + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label><strong>Max Saved Responses</strong><input type="number" name="max_saved_responses" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.max_saved_responses == null ? '' : editingPlan.max_saved_responses) + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label>Max active prebuilt assistants<input type="number" min="0" name="max_active_assistants" value="' + escHtml(editingPlan.max_active_assistants == null ? '' : editingPlan.max_active_assistants) + '" placeholder="blank = unlimited"></label></p>' +
+              '<p><label>Model access<select name="model_access_level">' + [0,1,2].map(function(level) { return '<option value="' + level + '"' + (Number(editingPlan.model_access_level || 0) === level ? ' selected' : '') + '>' + ['Free','Basic','Pro'][level] + '</option>'; }).join('') + '</select></label></p>' +
               '<p><label><strong>Sort Order</strong><input type="number" name="sort_order" class="small-text" min="0" step="1" value="' + escHtml(editingPlan.sort_order || '0') + '"></label></p>' +
               '<p><label><strong>Popular</strong><br><input type="checkbox" name="is_popular"' + (String(editingPlan.is_popular) === '1' ? ' checked' : '') + '> Mark as popular</label></p>' +
               '<p><label><strong>Active</strong><br><input type="checkbox" name="is_active"' + ((editingPlan.is_active === undefined || String(editingPlan.is_active) === '1') ? ' checked' : '') + '> Available to users</label></p>' +
@@ -716,12 +721,14 @@
           is_popular:            root.querySelector('#coachpro-plan-form [name="is_popular"]').checked ? 1 : 0,
           is_active:             root.querySelector('#coachpro-plan-form [name="is_active"]').checked ? 1 : 0
         };
+        payload.model_access_level = Number(formData.get('model_access_level'));
+        payload.max_active_assistants = formData.get('max_active_assistants') === '' ? null : Number(formData.get('max_active_assistants'));
         var maxProjects    = formData.get('max_projects');
         var maxAssistants  = formData.get('max_custom_assistants');
         var maxSaved       = formData.get('max_saved_responses');
-        if (maxProjects !== null && maxProjects !== '')   { payload.max_projects          = parseInt(maxProjects, 10); }
-        if (maxAssistants !== null && maxAssistants !== '') { payload.max_custom_assistants = parseInt(maxAssistants, 10); }
-        if (maxSaved !== null && maxSaved !== '')         { payload.max_saved_responses   = parseInt(maxSaved, 10); }
+        payload.max_projects = maxProjects === '' ? null : Number(maxProjects);
+        payload.max_custom_assistants = maxAssistants === '' ? null : Number(maxAssistants);
+        payload.max_saved_responses = maxSaved === '' ? null : Number(maxSaved);
 
         var request, successMessage;
         if (state.editingPlanId) {

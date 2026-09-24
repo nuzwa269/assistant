@@ -24,8 +24,9 @@ class CoachPro_Payments_API {
     }
 
     public static function list_payments( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         $user_id = get_current_user_id();
-        $rows    = CoachPro_DB::get_rows( 'payments', array( 'user_id' => $user_id ), 'created_at DESC' );
+        $rows    = CoachPro_DB::get_rows( 'payments', array( 'user_id' => $user_id ), 'created_at DESC', $limit, $offset );
         return rest_ensure_response( $rows );
     }
 
@@ -40,34 +41,17 @@ class CoachPro_Payments_API {
             return new WP_Error( 'missing_fields', __( 'kind and method are required.', 'coachpro-ai' ), array( 'status' => 400 ) );
         }
 
-        $amount_pkr = absint( $params['amount_pkr'] ?? 0 );
-        $plan_id    = sanitize_text_field( $params['plan_id'] ?? '' ) ?: null;
-        $pack_id    = sanitize_text_field( $params['pack_id'] ?? '' ) ?: null;
-
-        // Override amount_pkr with the authoritative price from the plan or pack record
-        // to prevent clients submitting a fraudulently low amount.
-        if ( 'subscription' === $kind && $plan_id ) {
-            $plan = CoachPro_DB::get_row( 'plans', $plan_id );
-            if ( ! $plan ) {
-                return new WP_Error( 'invalid_plan', __( 'Invalid plan.', 'coachpro-ai' ), array( 'status' => 400 ) );
-            }
-            $amount_pkr = (int) $plan['price_pkr'];
-        } elseif ( 'credit_pack' === $kind && $pack_id ) {
-            $pack = CoachPro_DB::get_row( 'credit_packs', $pack_id );
-            if ( ! $pack ) {
-                return new WP_Error( 'invalid_pack', __( 'Invalid credit pack.', 'coachpro-ai' ), array( 'status' => 400 ) );
-            }
-            $amount_pkr = (int) $pack['price_pkr'];
-        } else {
-            // Fallback: must have a non-zero amount if no plan/pack given.
-            if ( ! $amount_pkr ) {
-                return new WP_Error( 'missing_amount', __( 'amount_pkr is required.', 'coachpro-ai' ), array( 'status' => 400 ) );
-            }
-        }
+        $plan_id = 'subscription' === $kind ? sanitize_text_field($params['plan_id'] ?? '') : null;
+        $pack_id = 'credit_pack' === $kind ? sanitize_text_field($params['pack_id'] ?? '') : null;
+        $item = CoachPro_DB::get_row('subscription' === $kind ? 'plans' : 'credit_packs', (string)($plan_id ?: $pack_id));
+        if ( ! $item || ! $item['is_active'] || (int)$item['price_pkr'] <= 0 ) return new WP_Error('invalid_product', 'Choose an active paid plan or credit pack.', array('status'=>400));
+        if (empty($params['reference_no']) || empty($params['sender_name'])) return new WP_Error('missing_reference', 'Sender name and payment reference are required.', array('status'=>400));
+        $amount_pkr = (int)$item['price_pkr'];
+        $credits_grant = (int)$item['subscription' === $kind ? 'monthly_credits' : 'credits'];
 
         global $wpdb;
         $id = wp_generate_uuid4();
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'payments' ),
             array(
                 'id'           => $id,
@@ -76,6 +60,7 @@ class CoachPro_Payments_API {
                 'plan_id'      => $plan_id,
                 'pack_id'      => $pack_id,
                 'amount_pkr'   => $amount_pkr,
+                'credits_grant' => $credits_grant,
                 'method'       => $method,
                 'sender_name'  => sanitize_text_field( $params['sender_name'] ?? '' ),
                 'sender_phone' => sanitize_text_field( $params['sender_phone'] ?? '' ),
@@ -83,7 +68,7 @@ class CoachPro_Payments_API {
                 'notes'        => sanitize_textarea_field( $params['notes'] ?? '' ),
                 'status'       => 'pending',
             ),
-            array( '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
+            array( '%s', '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
         );
 
         return rest_ensure_response( CoachPro_DB::get_row( 'payments', $id ) );
@@ -97,6 +82,8 @@ class CoachPro_Payments_API {
         if ( ! $payment || (int) $payment['user_id'] !== $user_id ) {
             return new WP_Error( 'not_found', __( 'Payment not found.', 'coachpro-ai' ), array( 'status' => 404 ) );
         }
+
+        if ('pending' !== $payment['status']) return new WP_Error('already_processed', 'Only pending payments accept proof uploads.', array('status'=>409));
 
         if ( empty( $_FILES['proof'] ) ) {
             return new WP_Error( 'missing_file', __( 'No file uploaded.', 'coachpro-ai' ), array( 'status' => 400 ) );
@@ -130,7 +117,7 @@ class CoachPro_Payments_API {
         }
 
         global $wpdb;
-        $wpdb->update(
+        CoachPro_DB::update(
             CoachPro_DB::table( 'payments' ),
             array( 'proof_url' => esc_url_raw( $uploaded['url'] ) ),
             array( 'id' => $payment_id ),

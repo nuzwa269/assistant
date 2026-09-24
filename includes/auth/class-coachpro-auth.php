@@ -23,6 +23,8 @@ class CoachPro_Auth {
     // Role registration (called on 'init')
     // -------------------------------------------------------------------------
     public static function register_roles() {
+        $admin = get_role('administrator');
+        if ($admin && ! $admin->has_cap('coachpro_admin')) $admin->add_cap('coachpro_admin');
         if ( ! get_role( 'coachpro_user' ) ) {
             add_role( 'coachpro_user', __( 'CoachPro User', 'coachpro-ai' ), array( 'read' => true ) );
         }
@@ -68,6 +70,7 @@ class CoachPro_Auth {
             wp_send_json_error( array( 'message' => $user->get_error_message() ), 401 );
         }
 
+        wp_set_current_user( $user->ID );
         wp_set_auth_cookie( $user->ID, true );
         wp_send_json_success( self::user_data( $user->ID ) );
     }
@@ -96,6 +99,7 @@ class CoachPro_Auth {
             wp_send_json_error( array( 'message' => $user_id->get_error_message() ), 409 );
         }
 
+        wp_set_current_user( $user_id );
         wp_set_auth_cookie( $user_id, true );
         wp_send_json_success( self::user_data( $user_id ) );
     }
@@ -275,6 +279,7 @@ class CoachPro_Auth {
             }
         }
 
+        wp_set_current_user( $user_id );
         wp_set_auth_cookie( $user_id, true );
         wp_safe_redirect( $redirect_to );
         exit;
@@ -284,6 +289,7 @@ class CoachPro_Auth {
     // Helper: build user data array
     // -------------------------------------------------------------------------
     public static function user_data( int $user_id ) : array {
+        CoachPro_Credits::refresh_plan($user_id);
         $user = get_userdata( $user_id );
         return array(
             'id'          => $user_id,

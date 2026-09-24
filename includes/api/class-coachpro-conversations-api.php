@@ -21,6 +21,7 @@ class CoachPro_Conversations_API {
     }
 
     public static function list_conversations( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         $user_id    = get_current_user_id();
         $project_id = sanitize_text_field( $request->get_param( 'project_id' ) ?? '' );
 
@@ -30,7 +31,7 @@ class CoachPro_Conversations_API {
             $where['project_id'] = $project_id;
         }
 
-        $rows = CoachPro_DB::get_rows( 'conversations', $where, 'updated_at DESC' );
+        $rows = CoachPro_DB::get_rows( 'conversations', $where, 'updated_at DESC', $limit, $offset );
         return rest_ensure_response( $rows );
     }
 
@@ -64,7 +65,7 @@ class CoachPro_Conversations_API {
 
         global $wpdb;
         $id = wp_generate_uuid4();
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'conversations' ),
             array(
                 'id'           => $id,
@@ -102,7 +103,7 @@ class CoachPro_Conversations_API {
         }
 
         global $wpdb;
-        $wpdb->update( CoachPro_DB::table( 'conversations' ), $data, array( 'id' => $id ) );
+        CoachPro_DB::update( CoachPro_DB::table( 'conversations' ), $data, array( 'id' => $id ) );
         return rest_ensure_response( CoachPro_DB::get_row( 'conversations', $id ) );
     }
 
@@ -120,21 +121,25 @@ class CoachPro_Conversations_API {
 
         global $wpdb;
 
+        if (CoachPro_DB::count('chat_requests', array('conversation_id'=>$id, 'status'=>'pending'))) return new WP_Error('chat_busy','Wait for the current chat to finish before deleting it.',array('status'=>409));
+        CoachPro_DB::delete(CoachPro_DB::table('chat_requests'), array('conversation_id'=>$id));
+        wp_clear_scheduled_hook('coachpro_summarize', array($id));
+
         // Cascade-delete messages, summaries, and saved responses tied to this conversation.
         $t_msg     = CoachPro_DB::table( 'messages' );
         $t_saved   = CoachPro_DB::table( 'saved_responses' );
 
         // Delete saved responses linked to messages in this conversation.
-        $wpdb->query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        CoachPro_DB::query( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             "DELETE sr FROM `{$t_saved}` sr
              INNER JOIN `{$t_msg}` m ON m.id = sr.message_id
              WHERE m.conversation_id = %s",
             $id
         ) );
 
-        $wpdb->delete( CoachPro_DB::table( 'messages' ),       array( 'conversation_id' => $id ) );
-        $wpdb->delete( CoachPro_DB::table( 'conv_summaries' ), array( 'conversation_id' => $id ) );
-        $wpdb->delete( CoachPro_DB::table( 'conversations' ),  array( 'id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'messages' ),       array( 'conversation_id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'conv_summaries' ), array( 'conversation_id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'conversations' ),  array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 
@@ -150,7 +155,8 @@ class CoachPro_Conversations_API {
             return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        $rows = CoachPro_DB::get_rows( 'messages', array( 'conversation_id' => $id ), 'created_at ASC', 200 );
+        list($limit, $offset) = CoachPro_DB::pagination($request);
+        $rows = array_reverse(CoachPro_DB::get_rows( 'messages', array( 'conversation_id' => $id ), 'created_at DESC', $limit, $offset ));
         return rest_ensure_response( $rows );
     }
 
@@ -167,7 +173,7 @@ class CoachPro_Conversations_API {
             return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
-        $role    = in_array( $params['role'] ?? '', array( 'user', 'assistant', 'system' ), true ) ? $params['role'] : 'user';
+        $role = 'user';
         $content = wp_kses_post( $params['content'] ?? '' );
 
         if ( empty( $content ) ) {
@@ -176,7 +182,7 @@ class CoachPro_Conversations_API {
 
         global $wpdb;
         $id = wp_generate_uuid4();
-        $wpdb->insert(
+        CoachPro_DB::insert(
             CoachPro_DB::table( 'messages' ),
             array(
                 'id'              => $id,
@@ -185,7 +191,7 @@ class CoachPro_Conversations_API {
                 'role'            => $role,
                 'content'         => $content,
                 'model_id'        => sanitize_text_field( $params['model_id'] ?? '' ),
-                'credits_used'    => absint( $params['credits_used'] ?? 0 ),
+                'credits_used'    => 0,
             ),
             array( '%s', '%s', '%d', '%s', '%s', '%s', '%d' )
         );
