@@ -57,7 +57,7 @@ $plans = (array) $wpdb->get_results( 'SELECT id, name, price_pkr, monthly_credit
                     <span class="coachpro-badge-<?php echo esc_attr( $plan ); ?>"><?php echo esc_html( strtoupper( $plan ) ); ?></span>
                     <?php if ( $renews ) : ?><br><small><?php echo esc_html( sprintf( __( 'until %s', 'coachpro-ai' ), $renews ) ); ?></small><?php endif; ?>
                 </td>
-                <td><?php echo esc_html( number_format( $credits, 4 ) ); ?></td>
+                <td><?php echo esc_html( number_format( $credits, 2, '.', '' ) ); ?></td>
                 <td><?php echo esc_html( $user->user_registered ); ?></td>
                 <td>
                     <details>

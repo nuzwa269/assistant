@@ -238,11 +238,11 @@
     return avatar;
   }
 
-  /** Credits are fractional (token billing); show up to 4 decimals, no trailing zeros. */
+  /** Credits always show as plain numbers with two decimals, e.g. 2499.00 (same in every browser language). */
   function formatCredits(value) {
     var n = Number(value || 0);
     if (!isFinite(n)) n = 0;
-    return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+    return n.toFixed(2);
   }
 
   function stripHtml(str) {

@@ -4,7 +4,7 @@ Tags: ai, coaching, chatbot, openai, assistant
 Requires at least: 6.0
 Requires PHP: 8.0
 Tested up to: 6.5
-Stable tag: 1.5.3
+Stable tag: 1.5.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,6 +54,9 @@ OpenAI (GPT-4o, etc.), Anthropic (Claude), and OpenRouter.
 No. Everything runs on WordPress + MySQL.
 
 == Changelog ==
+
+= 1.5.4 =
+* Credits are always shown as plain numbers with two decimals (for example 2499.00), in every browser language and in the admin panel.
 
 = 1.5.3 =
 * Fix: a model using the Custom provider key could be saved with the OpenAI Base URL, so its key was sent to api.openai.com and every chat failed with HTTP 401. Such models now use the Custom provider URL, and changing the Custom URL moves these models with it.

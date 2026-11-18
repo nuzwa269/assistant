@@ -24,11 +24,11 @@ $total_credits  = (float) $wpdb->get_var( "SELECT SUM(amount) FROM `{$t_tx}` WHE
             <p><?php esc_html_e( 'Messages Today', 'coachpro-ai' ); ?></p>
         </div>
         <div class="postbox" style="min-width:160px;padding:20px;text-align:center;">
-            <h2 style="font-size:2em;margin:0;"><?php echo esc_html( number_format( $used_today, 2 ) ); ?></h2>
+            <h2 style="font-size:2em;margin:0;"><?php echo esc_html( number_format( $used_today, 2, '.', '' ) ); ?></h2>
             <p><?php esc_html_e( 'Credits Used Today', 'coachpro-ai' ); ?></p>
         </div>
         <div class="postbox" style="min-width:160px;padding:20px;text-align:center;">
-            <h2 style="font-size:2em;margin:0;"><?php echo esc_html( number_format( $total_credits, 2 ) ); ?></h2>
+            <h2 style="font-size:2em;margin:0;"><?php echo esc_html( number_format( $total_credits, 2, '.', '' ) ); ?></h2>
             <p><?php esc_html_e( 'Total Credits Issued', 'coachpro-ai' ); ?></p>
         </div>
     </div>

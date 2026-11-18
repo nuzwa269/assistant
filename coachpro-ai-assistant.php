@@ -3,7 +3,7 @@
  * Plugin Name: CoachPro AI Assistant
  * Plugin URI:  https://github.com/nuzwa269/assistant
  * Description: AI coaching with chat, projects, custom assistants, token-based credits, manual payments and a WordPress admin panel.
- * Version:     1.5.3
+ * Version:     1.5.4
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * License: GPLv2 or later
@@ -16,7 +16,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'COACHPRO_VERSION',     '1.5.3' );
+define( 'COACHPRO_VERSION',     '1.5.4' );
 define( 'COACHPRO_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'COACHPRO_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'COACHPRO_PLUGIN_FILE', __FILE__ );
