@@ -11,8 +11,9 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class CoachPro_Activator {
 
     public static function activate() {
+        if (get_option('coachpro_db_version')) self::maybe_upgrade();
         self::create_tables();
-        self::insert_defaults();
+        if ( ! get_option( 'coachpro_db_version' ) ) self::insert_defaults();
         self::create_roles();
         self::create_pages();
         update_option( 'coachpro_db_version', COACHPRO_VERSION );
@@ -25,8 +26,41 @@ class CoachPro_Activator {
             return;
         }
 
+        global $wpdb;
+        if ( version_compare( $db_version, '1.5.0', '<' ) ) {
+            // The unused "lovable" protocol is removed from the column; move any such rows first.
+            $models_table = CoachPro_DB::table( 'ai_models' );
+            if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $models_table ) ) ) {
+                $wpdb->query( "UPDATE `{$models_table}` SET provider_type = 'openai_compatible' WHERE provider_type = 'lovable'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            }
+        }
         self::create_tables();
-        self::seed_default_models( false );
+        if ( version_compare( $db_version, '1.2.0', '<' ) ) {
+            $wpdb->update( CoachPro_DB::table('plans'), array('max_active_assistants' => 1), array('id' => 'free') );
+            $wpdb->update( CoachPro_DB::table('plans'), array('model_access_level' => 1), array('id' => 'basic') );
+            $wpdb->update( CoachPro_DB::table('plans'), array('model_access_level' => 2), array('id' => 'pro') );
+        }
+        if ( version_compare( $db_version, '1.3.0', '<' ) ) {
+            // Add trial credits columns to payments table if they don't exist
+            $payments_table = CoachPro_DB::table('payments');
+            $cols = $wpdb->get_col("DESCRIBE `{$payments_table}`");
+            if (!in_array('trial_credits_granted', $cols)) {
+                $wpdb->query("ALTER TABLE `{$payments_table}` ADD COLUMN `trial_credits_granted` INT NOT NULL DEFAULT 0");
+            }
+            if (!in_array('trial_credits_reverted', $cols)) {
+                $wpdb->query("ALTER TABLE `{$payments_table}` ADD COLUMN `trial_credits_reverted` TINYINT(1) NOT NULL DEFAULT 0");
+            }
+        }
+        if ( version_compare( $db_version, '1.4.2', '<' ) ) {
+            self::replace_retired_models();
+        }
+        if ( version_compare( $db_version, '1.5.0', '<' ) ) {
+            self::upgrade_to_token_billing();
+        }
+        if ( version_compare( $db_version, '1.5.1', '<' ) ) {
+            self::apply_recommended_models();
+        }
+        self::create_pages();
         self::ensure_default_model_flag();
         update_option( 'coachpro_db_version', COACHPRO_VERSION );
     }
@@ -44,13 +78,17 @@ class CoachPro_Activator {
         $sql = array();
 
         // 1. AI Models
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_ai_models` (
+        $sql[] = "CREATE TABLE {$p}coachpro_ai_models (
             id VARCHAR(100) NOT NULL,
             display_name VARCHAR(255) NOT NULL,
             provider VARCHAR(100) NOT NULL,
-            provider_type ENUM('openai_compatible','anthropic','gemini','lovable') NOT NULL DEFAULT 'openai_compatible',
+            provider_type ENUM('openai_compatible','anthropic','gemini') NOT NULL DEFAULT 'openai_compatible',
             category ENUM('text','image','reasoning') NOT NULL DEFAULT 'text',
             credits_cost INT NOT NULL DEFAULT 1,
+            input_credits_per_1k DECIMAL(16,6) NOT NULL DEFAULT 0,
+            output_credits_per_1k DECIMAL(16,6) NOT NULL DEFAULT 0,
+            api_input_usd_per_1m DECIMAL(12,4) NOT NULL DEFAULT 0,
+            api_output_usd_per_1m DECIMAL(12,4) NOT NULL DEFAULT 0,
             min_plan ENUM('free','basic','pro') NOT NULL DEFAULT 'free',
             api_key_secret_name VARCHAR(100) DEFAULT NULL,
             api_base_url VARCHAR(500) DEFAULT NULL,
@@ -58,18 +96,19 @@ class CoachPro_Activator {
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             is_default TINYINT(1) NOT NULL DEFAULT 0,
             description TEXT DEFAULT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id)
-        ) $charset;";
+            PRIMARY KEY  (id)
+        ) ENGINE=InnoDB $charset;";
 
         // 2. Assistants
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_assistants` (
+        $sql[] = "CREATE TABLE {$p}coachpro_assistants (
             id CHAR(36) NOT NULL,
             owner_id BIGINT UNSIGNED DEFAULT NULL,
             name VARCHAR(255) NOT NULL,
             description TEXT DEFAULT NULL,
             system_prompt LONGTEXT NOT NULL,
+            conversation_starters LONGTEXT DEFAULT NULL,
             icon VARCHAR(100) NOT NULL DEFAULT 'Bot',
             category VARCHAR(100) DEFAULT NULL,
             is_prebuilt TINYINT(1) NOT NULL DEFAULT 0,
@@ -78,67 +117,69 @@ class CoachPro_Activator {
             temperature DECIMAL(4,2) DEFAULT 0.70,
             max_tokens INT DEFAULT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_owner (owner_id),
             KEY idx_prebuilt (is_prebuilt)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 3. User Active Assistants
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_user_active_assistants` (
+        $sql[] = "CREATE TABLE {$p}coachpro_user_active_assistants (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             assistant_id CHAR(36) NOT NULL,
             activated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             UNIQUE KEY unique_ua (user_id, assistant_id),
             KEY idx_user (user_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 4. Projects
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_projects` (
+        $sql[] = "CREATE TABLE {$p}coachpro_projects (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             name VARCHAR(255) NOT NULL,
             description TEXT DEFAULT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_user (user_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 5. Conversations
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_conversations` (
+        $sql[] = "CREATE TABLE {$p}coachpro_conversations (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             project_id CHAR(36) NOT NULL,
             assistant_id CHAR(36) NOT NULL,
             title VARCHAR(500) NOT NULL DEFAULT 'New conversation',
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_project (project_id),
             KEY idx_user (user_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 6. Messages
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_messages` (
+        $sql[] = "CREATE TABLE {$p}coachpro_messages (
             id CHAR(36) NOT NULL,
             conversation_id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             role ENUM('user','assistant','system') NOT NULL,
             content LONGTEXT NOT NULL,
             model_id VARCHAR(100) DEFAULT NULL,
-            credits_used INT NOT NULL DEFAULT 0,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            credits_used DECIMAL(16,6) NOT NULL DEFAULT 0,
+            input_tokens INT NOT NULL DEFAULT 0,
+            output_tokens INT NOT NULL DEFAULT 0,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id),
             KEY idx_conv (conversation_id),
             KEY idx_user (user_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 7. Conversation Summaries
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_conv_summaries` (
+        $sql[] = "CREATE TABLE {$p}coachpro_conv_summaries (
             id CHAR(36) NOT NULL,
             conversation_id CHAR(36) NOT NULL,
             summary LONGTEXT DEFAULT NULL,
@@ -146,25 +187,25 @@ class CoachPro_Activator {
             summarized_up_to_message_id CHAR(36) DEFAULT NULL,
             message_count_at_summary INT NOT NULL DEFAULT 0,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             UNIQUE KEY unique_conv (conversation_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 8. Saved Responses
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_saved_responses` (
+        $sql[] = "CREATE TABLE {$p}coachpro_saved_responses (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             message_id CHAR(36) NOT NULL,
             project_id CHAR(36) DEFAULT NULL,
             note TEXT DEFAULT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id),
             UNIQUE KEY unique_um (user_id, message_id),
             KEY idx_user (user_id)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 9. Plans
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_plans` (
+        $sql[] = "CREATE TABLE {$p}coachpro_plans (
             id VARCHAR(50) NOT NULL,
             name VARCHAR(255) NOT NULL,
             price_pkr INT NOT NULL DEFAULT 0,
@@ -172,16 +213,18 @@ class CoachPro_Activator {
             max_projects INT DEFAULT NULL,
             max_custom_assistants INT DEFAULT NULL,
             max_saved_responses INT DEFAULT NULL,
+            max_active_assistants INT DEFAULT NULL,
+            model_access_level INT NOT NULL DEFAULT 0,
             features LONGTEXT DEFAULT NULL,
             is_popular TINYINT(1) NOT NULL DEFAULT 0,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             sort_order INT NOT NULL DEFAULT 0,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id)
-        ) $charset;";
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id)
+        ) ENGINE=InnoDB $charset;";
 
         // 10. Credit Packs
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_credit_packs` (
+        $sql[] = "CREATE TABLE {$p}coachpro_credit_packs (
             id CHAR(36) NOT NULL,
             name VARCHAR(255) NOT NULL,
             credits INT NOT NULL,
@@ -189,18 +232,19 @@ class CoachPro_Activator {
             is_popular TINYINT(1) NOT NULL DEFAULT 0,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             sort_order INT NOT NULL DEFAULT 0,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id)
-        ) $charset;";
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id)
+        ) ENGINE=InnoDB $charset;";
 
         // 11. Payments
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_payments` (
+        $sql[] = "CREATE TABLE {$p}coachpro_payments (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
             kind ENUM('subscription','credit_pack') NOT NULL,
             plan_id VARCHAR(50) DEFAULT NULL,
             pack_id CHAR(36) DEFAULT NULL,
             amount_pkr INT NOT NULL,
+            credits_grant INT DEFAULT NULL,
             method ENUM('jazzcash','easypaisa','bank_transfer','whatsapp') NOT NULL,
             sender_name VARCHAR(255) DEFAULT NULL,
             sender_phone VARCHAR(50) DEFAULT NULL,
@@ -211,29 +255,51 @@ class CoachPro_Activator {
             reviewed_by BIGINT UNSIGNED DEFAULT NULL,
             reviewed_at DATETIME DEFAULT NULL,
             admin_notes TEXT DEFAULT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            trial_credits_granted INT NOT NULL DEFAULT 0,
+            trial_credits_reverted TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id),
             KEY idx_user (user_id),
             KEY idx_status (status)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
 
         // 12. Transactions
-        $sql[] = "CREATE TABLE IF NOT EXISTS `{$p}coachpro_transactions` (
+        $sql[] = "CREATE TABLE {$p}coachpro_transactions (
             id CHAR(36) NOT NULL,
             user_id BIGINT UNSIGNED NOT NULL,
-            amount INT NOT NULL,
+            amount DECIMAL(22,6) NOT NULL,
             kind ENUM('signup_bonus','subscription_grant','pack_purchase','message_deduct','admin_adjust','refund') NOT NULL,
-            balance_after INT NOT NULL,
+            balance_after DECIMAL(22,6) NOT NULL,
             reference_id CHAR(36) DEFAULT NULL,
             model_id VARCHAR(100) DEFAULT NULL,
             notes TEXT DEFAULT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id),
             KEY idx_user_date (user_id, created_at)
-        ) $charset;";
+        ) ENGINE=InnoDB $charset;";
+
+        $sql[] = "CREATE TABLE {$p}coachpro_chat_requests (
+            id CHAR(36) NOT NULL,
+            user_id BIGINT UNSIGNED NOT NULL,
+            conversation_id CHAR(36) NOT NULL,
+            message_id CHAR(36) NOT NULL,
+            credits DECIMAL(16,6) NOT NULL DEFAULT 0,
+            payload_hash CHAR(64) DEFAULT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY  (id),
+            KEY pending_requests (status, created_at)
+        ) ENGINE=InnoDB $charset;";
 
         foreach ( $sql as $query ) {
             dbDelta( $query );
+            if ($wpdb->last_error) throw new RuntimeException('CoachPro schema update failed. Database version was not advanced.');
+            preg_match('/CREATE TABLE ([a-zA-Z0-9_]+)/', $query, $match);
+            if (!empty($match[1])) {
+                $engine = $wpdb->get_var($wpdb->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s', $match[1]));
+                if (!$engine) throw new RuntimeException('CoachPro table creation failed.');
+                if ('InnoDB' !== $engine && false === $wpdb->query('ALTER TABLE `' . $match[1] . '` ENGINE=InnoDB')) throw new RuntimeException('CoachPro requires transactional tables.');
+            }
         }
     }
 
@@ -250,11 +316,13 @@ class CoachPro_Activator {
                 'id'                   => 'free',
                 'name'                 => 'Free',
                 'price_pkr'            => 0,
-                'monthly_credits'      => 50,
+                'monthly_credits'      => 0,
                 'max_projects'         => 3,
                 'max_custom_assistants'=> 1,
                 'max_saved_responses'  => 10,
-                'features'             => wp_json_encode( array( '50 credits/month', '3 projects', '1 custom assistant', '10 saved responses' ) ),
+                'max_active_assistants' => 1,
+                'model_access_level' => 0,
+                'features'             => wp_json_encode( array( '20 credits once on signup', '3 projects', '1 custom assistant', '10 saved responses' ) ),
                 'is_popular'           => 0,
                 'is_active'            => 1,
                 'sort_order'           => 1,
@@ -264,6 +332,7 @@ class CoachPro_Activator {
                 'name'                 => 'Basic',
                 'price_pkr'            => 999,
                 'monthly_credits'      => 500,
+                'model_access_level' => 1,
                 'max_projects'         => null,
                 'max_custom_assistants'=> null,
                 'max_saved_responses'  => null,
@@ -277,6 +346,7 @@ class CoachPro_Activator {
                 'name'                 => 'Pro',
                 'price_pkr'            => 2499,
                 'monthly_credits'      => 2000,
+                'model_access_level' => 2,
                 'max_projects'         => null,
                 'max_custom_assistants'=> null,
                 'max_saved_responses'  => null,
@@ -311,10 +381,10 @@ class CoachPro_Activator {
                 'icon'          => 'GraduationCap',
                 'category'      => 'Lifestyle',
                 'is_prebuilt'   => 1,
-                'provider'      => 'OpenAI',
-                'default_model_id' => 'gpt-4o-mini',
+                'provider'      => 'Anthropic',
+                'default_model_id' => 'claude-haiku-5-5',
                 'temperature'   => 0.70,
-                'max_tokens'    => 1024,
+                'max_tokens'    => 4096,
                 'is_active'     => 1,
             ),
             array(
@@ -326,10 +396,10 @@ class CoachPro_Activator {
                 'icon'          => 'Building2',
                 'category'      => 'Business',
                 'is_prebuilt'   => 1,
-                'provider'      => 'OpenAI',
-                'default_model_id' => 'gpt-4o-mini',
+                'provider'      => 'Anthropic',
+                'default_model_id' => 'claude-haiku-5-5',
                 'temperature'   => 0.70,
-                'max_tokens'    => 1024,
+                'max_tokens'    => 4096,
                 'is_active'     => 1,
             ),
             array(
@@ -341,10 +411,10 @@ class CoachPro_Activator {
                 'icon'          => 'Lightbulb',
                 'category'      => 'Health',
                 'is_prebuilt'   => 1,
-                'provider'      => 'OpenAI',
-                'default_model_id' => 'gpt-4o-mini',
+                'provider'      => 'Anthropic',
+                'default_model_id' => 'claude-haiku-5-5',
                 'temperature'   => 0.70,
-                'max_tokens'    => 1024,
+                'max_tokens'    => 4096,
                 'is_active'     => 1,
             ),
         );
@@ -356,72 +426,43 @@ class CoachPro_Activator {
         self::ensure_default_model_flag();
     }
 
+    /**
+     * Recommended text models (November 2026): good quality at low cost.
+     * Prices are set by CoachPro_Pricing so every plan/pack keeps the target profit.
+     */
+    private static function recommended_models() : array {
+        $list = array(
+            // id, display, provider, type, key option, base url, api name, min plan, default, description
+            array( 'claude-haiku-5-5', 'Claude Haiku 5.5', 'Anthropic', 'anthropic', 'coachpro_anthropic_key', 'https://api.anthropic.com', 'claude-haiku-5-5', 'free', 1, 'Fast and low-cost. Recommended default for coaching, prompts and everyday coding.' ),
+            array( 'gpt-6-luna', 'GPT-6 Luna', 'OpenAI', 'openai_compatible', 'coachpro_openai_key', 'https://api.openai.com/v1', 'gpt-6-luna', 'free', 0, 'Low-cost OpenAI model for everyday questions, prompts and simple code.' ),
+            array( 'claude-sonnet-5-5', 'Claude Sonnet 5.5', 'Anthropic', 'anthropic', 'coachpro_anthropic_key', 'https://api.anthropic.com', 'claude-sonnet-5-5', 'pro', 0, 'Premium model for difficult coding, API integration and bug fixing.' ),
+            array( 'gpt-6-1-sol', 'GPT-6.1 Sol', 'OpenAI', 'openai_compatible', 'coachpro_openai_key', 'https://api.openai.com/v1', 'gpt-6.1-sol', 'pro', 0, 'Premium OpenAI model for difficult coding and debugging.' ),
+            array( 'gemini-3-8-flash', 'Gemini 3.8 Flash', 'Google Gemini', 'gemini', 'coachpro_gemini_key', 'https://generativelanguage.googleapis.com/v1beta', 'gemini-3.8-flash', 'basic', 0, 'Google model. Note: Google doubles its price on 1 January 2027.' ),
+        );
+        $settings = CoachPro_Pricing::settings();
+        $cpc      = CoachPro_Pricing::cost_per_credit( $settings );
+        $models   = array();
+        foreach ( $list as $m ) {
+            $usd = CoachPro_Pricing::KNOWN_API_PRICES[ $m[6] ] ?? array( 0, 0 );
+            $models[] = array(
+                'id' => $m[0], 'display_name' => $m[1], 'provider' => $m[2], 'provider_type' => $m[3], 'category' => 'text',
+                'credits_cost' => 1,
+                'api_input_usd_per_1m'  => $usd[0],
+                'api_output_usd_per_1m' => $usd[1],
+                'input_credits_per_1k'  => CoachPro_Pricing::credits_per_1k( (float) $usd[0], $settings, $cpc ),
+                'output_credits_per_1k' => CoachPro_Pricing::credits_per_1k( (float) $usd[1], $settings, $cpc ),
+                'min_plan' => $m[7], 'api_key_secret_name' => $m[4], 'api_base_url' => $m[5], 'api_model_name' => $m[6],
+                'is_active' => 1, 'is_default' => $m[8], 'description' => $m[9],
+            );
+        }
+        return $models;
+    }
+
     private static function seed_default_models( bool $replace = true ) {
         global $wpdb;
         $p = $wpdb->prefix;
 
-        $models = array(
-            array(
-                'id'                  => 'gpt-4o-mini',
-                'display_name'        => 'GPT-4o Mini',
-                'provider'            => 'OpenAI',
-                'provider_type'       => 'openai_compatible',
-                'category'            => 'text',
-                'credits_cost'        => 1,
-                'min_plan'            => 'free',
-                'api_key_secret_name' => 'coachpro_openai_key',
-                'api_base_url'        => 'https://api.openai.com/v1',
-                'api_model_name'      => 'gpt-4o-mini',
-                'is_active'           => 1,
-                'is_default'          => 1,
-                'description'         => 'Fast and affordable model for most tasks.',
-            ),
-            array(
-                'id'                  => 'gpt-4o',
-                'display_name'        => 'GPT-4o',
-                'provider'            => 'OpenAI',
-                'provider_type'       => 'openai_compatible',
-                'category'            => 'text',
-                'credits_cost'        => 5,
-                'min_plan'            => 'basic',
-                'api_key_secret_name' => 'coachpro_openai_key',
-                'api_base_url'        => 'https://api.openai.com/v1',
-                'api_model_name'      => 'gpt-4o',
-                'is_active'           => 1,
-                'is_default'          => 0,
-                'description'         => 'Most capable GPT-4 class model.',
-            ),
-            array(
-                'id'                  => 'claude-3-5-haiku',
-                'display_name'        => 'Claude 3.5 Haiku',
-                'provider'            => 'Anthropic',
-                'provider_type'       => 'anthropic',
-                'category'            => 'text',
-                'credits_cost'        => 2,
-                'min_plan'            => 'free',
-                'api_key_secret_name' => 'coachpro_anthropic_key',
-                'api_base_url'        => 'https://api.anthropic.com',
-                'api_model_name'      => 'claude-3-5-haiku-20241022',
-                'is_active'           => 1,
-                'is_default'          => 0,
-                'description'         => 'Fast and affordable Claude model.',
-            ),
-            array(
-                'id'                  => 'gemini-1.5-flash',
-                'display_name'        => 'Gemini 1.5 Flash',
-                'provider'            => 'Google Gemini',
-                'provider_type'       => 'gemini',
-                'category'            => 'text',
-                'credits_cost'        => 1,
-                'min_plan'            => 'free',
-                'api_key_secret_name' => 'coachpro_gemini_key',
-                'api_base_url'        => 'https://generativelanguage.googleapis.com/v1beta',
-                'api_model_name'      => 'gemini-1.5-flash',
-                'is_active'           => 1,
-                'is_default'          => 0,
-                'description'         => 'Google Gemini model for fast everyday responses.',
-            ),
-        );
+        $models = self::recommended_models();
         foreach ( $models as $model ) {
             if ( $replace ) {
                 $wpdb->replace( "{$p}coachpro_ai_models", $model );
@@ -435,6 +476,109 @@ class CoachPro_Activator {
         }
     }
 
+    /**
+     * Provider-retired model names return "model not found" for every request.
+     * Point the seeded rows at current replacements (row IDs stay the same, so
+     * assistants and chat history keep working). Admin-edited names are left alone.
+     */
+    private static function replace_retired_models() {
+        global $wpdb;
+        $table = CoachPro_DB::table( 'ai_models' );
+        $map = array(
+            // Retired 19 Feb 2026 (Anthropic model deprecations page).
+            'claude-3-5-haiku-20241022' => array( 'claude-haiku-5-5', 'Claude Haiku 5.5' ),
+            'claude-3-5-haiku-latest'   => array( 'claude-haiku-5-5', 'Claude Haiku 5.5' ),
+            'claude-3-haiku-20240307'   => array( 'claude-haiku-5-5', 'Claude Haiku 5.5' ),
+            'claude-3-5-sonnet-20241022'=> array( 'claude-sonnet-5-5', 'Claude Sonnet 5.5' ),
+            'claude-3-5-sonnet-20240620'=> array( 'claude-sonnet-5-5', 'Claude Sonnet 5.5' ),
+            'claude-3-7-sonnet-20250219'=> array( 'claude-sonnet-5-5', 'Claude Sonnet 5.5' ),
+            'claude-sonnet-4-20250514'  => array( 'claude-sonnet-5-5', 'Claude Sonnet 5.5' ),
+            // Gemini 1.5 models are no longer served by the Gemini API.
+            'gemini-1.5-flash'          => array( 'gemini-3.8-flash', 'Gemini 3.8 Flash' ),
+            'gemini-1.5-flash-latest'   => array( 'gemini-3.8-flash', 'Gemini 3.8 Flash' ),
+            'gemini-1.5-pro'            => array( 'gemini-3.8-flash', 'Gemini 3.8 Flash' ),
+        );
+        foreach ( $map as $old => $new ) {
+            $wpdb->update( $table, array( 'api_model_name' => $new[0], 'display_name' => $new[1] ), array( 'api_model_name' => $old ) );
+        }
+    }
+
+    /**
+     * 1.5.0: credits are charged per token instead of per message.
+     * - Give every model token prices derived from its old per-message cost
+     *   (a typical 1,500-token prompt + 500-token reply costs about the same as before).
+     * - Remove the inactive "report" catalog drafts and the old billing settings.
+     * - Move a Settings-page OpenRouter key into the single Custom/OpenRouter key.
+     * Old billing tables and payment records are left untouched (nothing is deleted).
+     */
+    private static function upgrade_to_token_billing() {
+        global $wpdb;
+        $models = CoachPro_DB::table( 'ai_models' );
+        $wpdb->query( "UPDATE `{$models}` SET input_credits_per_1k = credits_cost * 0.25, output_credits_per_1k = credits_cost * 1.25 WHERE input_credits_per_1k = 0 AND output_credits_per_1k = 0" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $wpdb->query( "DELETE FROM `{$models}` WHERE id LIKE 'billing-%' AND is_active = 0 AND description LIKE 'Report-derived draft%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+        $openrouter = trim( (string) get_option( 'coachpro_openrouter_key', '' ) );
+        if ( '' !== $openrouter && '' === trim( (string) get_option( 'coachpro_custom_key', '' ) ) ) {
+            update_option( 'coachpro_custom_key', $openrouter, false );
+            if ( '' === (string) get_option( 'coachpro_custom_base_url', '' ) ) update_option( 'coachpro_custom_base_url', 'https://openrouter.ai/api/v1', false );
+        }
+        // Models that pointed at the old OpenRouter key now use the single Custom/OpenRouter key.
+        $wpdb->update( $models, array( 'api_key_secret_name' => 'coachpro_custom_key' ), array( 'api_key_secret_name' => 'coachpro_openrouter_key' ) );
+        if ( '' !== trim( (string) get_option( 'coachpro_custom_key', '' ) ) ) delete_option( 'coachpro_openrouter_key' );
+
+        foreach ( array( 'coachpro_billing_mode', 'coachpro_billing_config', 'coachpro_billing_schema', 'coachpro_model_authorizations' ) as $option ) delete_option( $option );
+    }
+
+    /**
+     * 1.5.1: add the recommended models, price every model for the target profit,
+     * retire GPT-4o / GPT-4o mini (OpenAI shuts them down on 14 Jan 2027) and give
+     * assistants enough room for code (max tokens 4096).
+     */
+    private static function apply_recommended_models() {
+        global $wpdb;
+        $table    = CoachPro_DB::table( 'ai_models' );
+        $settings = CoachPro_Pricing::settings();
+        $cpc      = CoachPro_Pricing::cost_per_credit( $settings );
+
+        foreach ( self::recommended_models() as $model ) {
+            $existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM `{$table}` WHERE id = %s OR api_model_name = %s ORDER BY is_active DESC LIMIT 1", $model['id'], $model['api_model_name'] ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            if ( $existing ) {
+                $wpdb->update( $table, array_intersect_key( $model, array_flip( array( 'api_input_usd_per_1m', 'api_output_usd_per_1m', 'input_credits_per_1k', 'output_credits_per_1k', 'min_plan' ) ) ) + array( 'is_active' => 1 ), array( 'id' => $existing ) );
+            } else {
+                $model['is_default'] = 0;
+                $wpdb->insert( $table, $model );
+            }
+        }
+        // Other models with a known API price get prices for the target profit too.
+        foreach ( CoachPro_Pricing::KNOWN_API_PRICES as $name => $usd ) {
+            $wpdb->update( $table, array(
+                'api_input_usd_per_1m'  => $usd[0],
+                'api_output_usd_per_1m' => $usd[1],
+                'input_credits_per_1k'  => CoachPro_Pricing::credits_per_1k( (float) $usd[0], $settings, $cpc ),
+                'output_credits_per_1k' => CoachPro_Pricing::credits_per_1k( (float) $usd[1], $settings, $cpc ),
+            ), array( 'api_model_name' => $name ) );
+        }
+
+        // Retire GPT-4o models and move assistants that used them to the new defaults.
+        $retire = array( 'gpt-4o-mini' => 'gpt-6-luna', 'gpt-4o' => 'gpt-6-luna' );
+        foreach ( $retire as $old_name => $new_name ) {
+            $new_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM `{$table}` WHERE api_model_name = %s AND is_active = 1 LIMIT 1", $new_name ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            foreach ( (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM `{$table}` WHERE api_model_name = %s", $old_name ) ) as $old_id ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->update( $table, array( 'is_active' => 0, 'is_default' => 0 ), array( 'id' => $old_id ) );
+                if ( $new_id ) $wpdb->update( CoachPro_DB::table( 'assistants' ), array( 'default_model_id' => $new_id ), array( 'default_model_id' => $old_id ) );
+            }
+        }
+        // Default: Claude Haiku 5.5 (the plugin falls back to any model with a saved key).
+        $haiku = $wpdb->get_var( "SELECT id FROM `{$table}` WHERE api_model_name = 'claude-haiku-5-5' AND is_active = 1 LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        if ( $haiku ) {
+            $wpdb->query( "UPDATE `{$table}` SET is_default = 0" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->update( $table, array( 'is_default' => 1 ), array( 'id' => $haiku ) );
+        }
+
+        // Code answers need room: raise small output limits on prebuilt assistants.
+        $wpdb->query( 'UPDATE `' . CoachPro_DB::table( 'assistants' ) . '` SET max_tokens = 4096 WHERE is_prebuilt = 1 AND max_tokens IS NOT NULL AND max_tokens < 4096' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+    }
+
     private static function ensure_default_model_flag() {
         global $wpdb;
         $table = "{$wpdb->prefix}coachpro_ai_models";
@@ -444,7 +588,7 @@ class CoachPro_Activator {
             return;
         }
 
-        $fallback_id = $wpdb->get_var( "SELECT id FROM `{$table}` WHERE is_active = 1 ORDER BY credits_cost ASC, created_at ASC LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $fallback_id = $wpdb->get_var( "SELECT id FROM `{$table}` WHERE is_active = 1 ORDER BY output_credits_per_1k ASC, created_at ASC LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         if ( $fallback_id ) {
             $wpdb->update(
                 $table,
@@ -478,6 +622,7 @@ class CoachPro_Activator {
 
     private static function create_pages() {
         $pages = array(
+            'coachpro_page_landing'      => array( 'slug' => 'coachpro-home',     'title' => 'Home',            'shortcode' => '[coachpro_landing]' ),
             'coachpro_page_login'        => array( 'slug' => 'coachpro-login',    'title' => 'Login',           'shortcode' => '[coachpro_login]' ),
             'coachpro_page_register'     => array( 'slug' => 'coachpro-register', 'title' => 'Register',        'shortcode' => '[coachpro_register]' ),
             'coachpro_page_dashboard'    => array( 'slug' => 'dashboard',         'title' => 'Dashboard',       'shortcode' => '[coachpro_dashboard]' ),
@@ -514,6 +659,7 @@ class CoachPro_Activator {
             ));
             if ( $page_id && ! is_wp_error( $page_id ) ) {
                 update_option( $option_key, $page_id );
+                update_post_meta($page_id, '_coachpro_created_page', 1);
             }
         }
     }

@@ -4,8 +4,14 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class CoachPro_Shortcodes {
 
     public static function register() {
+        // Presentation only: leave theme templates and toolbars intact everywhere else.
+        add_filter( 'template_include', array( __CLASS__, 'workspace_template' ), 99 );
+        add_filter( 'show_admin_bar', array( __CLASS__, 'workspace_admin_bar' ), 99 );
+        add_action( 'wp_enqueue_scripts', array( __CLASS__, 'workspace_assets' ) );
         $map = array(
             'coachpro'              => 'dashboard',
+            'coachpro_landing'      => 'landing',
+            'coachpro_home'         => 'landing',
             'coachpro_dashboard'    => 'dashboard',
             'coachpro_chat'         => 'chat',
             'coachpro_projects'     => 'projects',
@@ -25,7 +31,55 @@ class CoachPro_Shortcodes {
         }
     }
 
+    public static function is_workspace_request() : bool {
+        if ( is_admin() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST )
+            || ! is_user_logged_in() || ! is_singular() ) {
+            return false;
+        }
+        $post = get_queried_object();
+        if ( ! ( $post instanceof WP_Post ) ) return false;
+        foreach ( array( 'coachpro_landing', 'coachpro_home', 'coachpro_login', 'coachpro_register' ) as $tag ) {
+            if ( has_shortcode( $post->post_content, $tag ) ) return false;
+        }
+        foreach ( array( 'coachpro', 'coachpro_dashboard', 'coachpro_projects', 'coachpro_assistants',
+            'coachpro_saved', 'coachpro_buy_credits', 'coachpro_help', 'coachpro_settings',
+            'coachpro_chat', 'coachpro_transactions' ) as $tag ) {
+            if ( has_shortcode( $post->post_content, $tag ) ) return true;
+        }
+        return false;
+    }
+
+    public static function workspace_template( $template ) {
+        return self::is_workspace_request()
+            ? COACHPRO_PLUGIN_DIR . 'public/partials/coachpro-workspace.php' : $template;
+    }
+
+    public static function workspace_admin_bar( $show ) {
+        return self::is_workspace_request() ? false : $show;
+    }
+
+    public static function workspace_assets() {
+        if ( ! self::is_workspace_request() ) return;
+        wp_enqueue_style( 'coachpro-frontend', COACHPRO_PLUGIN_URL . 'public/css/coachpro-frontend.css',
+            array(), filemtime( COACHPRO_PLUGIN_DIR . 'public/css/coachpro-frontend.css' ) );
+        wp_enqueue_script( 'coachpro-frontend', COACHPRO_PLUGIN_URL . 'public/js/coachpro-frontend.js',
+            array(), filemtime( COACHPRO_PLUGIN_DIR . 'public/js/coachpro-frontend.js' ), true );
+    }
+
     public static function render( string $view, $atts = array() ) : string {
+        // Public presentation is isolated from the authenticated SPA and its assets.
+        if ( 'landing' === $view ) {
+            wp_enqueue_style( 'coachpro-landing', COACHPRO_PLUGIN_URL . 'public/css/coachpro-landing.css', array(), filemtime( COACHPRO_PLUGIN_DIR . 'public/css/coachpro-landing.css' ) );
+            wp_enqueue_style( 'coachpro-motion', COACHPRO_PLUGIN_URL . 'public/css/coachpro-motion.css', array( 'coachpro-landing' ), filemtime( COACHPRO_PLUGIN_DIR . 'public/css/coachpro-motion.css' ) );
+            wp_enqueue_style( 'coachpro-marquee', COACHPRO_PLUGIN_URL . 'public/css/coachpro-marquee.css', array( 'coachpro-landing' ), filemtime( COACHPRO_PLUGIN_DIR . 'public/css/coachpro-marquee.css' ) );
+            wp_enqueue_style( 'coachpro-typography', COACHPRO_PLUGIN_URL . 'public/css/coachpro-typography.css', array( 'coachpro-landing' ), filemtime( COACHPRO_PLUGIN_DIR . 'public/css/coachpro-typography.css' ) );
+            wp_enqueue_script( 'coachpro-landing', COACHPRO_PLUGIN_URL . 'public/js/coachpro-landing.js', array(), filemtime( COACHPRO_PLUGIN_DIR . 'public/js/coachpro-landing.js' ), true );
+            wp_enqueue_script( 'coachpro-motion', COACHPRO_PLUGIN_URL . 'public/js/coachpro-motion.js', array( 'coachpro-landing' ), filemtime( COACHPRO_PLUGIN_DIR . 'public/js/coachpro-motion.js' ), true );
+            wp_enqueue_script( 'coachpro-marquee', COACHPRO_PLUGIN_URL . 'public/js/coachpro-marquee.js', array( 'coachpro-landing' ), filemtime( COACHPRO_PLUGIN_DIR . 'public/js/coachpro-marquee.js' ), true );
+            ob_start();
+            include COACHPRO_PLUGIN_DIR . 'public/partials/coachpro-landing.php';
+            return ob_get_clean();
+        }
         $atts = shortcode_atts( array(
             'theme'      => get_option( 'coachpro_default_theme', 'light' ),
             'height'     => '',
@@ -33,7 +87,7 @@ class CoachPro_Shortcodes {
         ), (array) $atts );
 
         // ── Auth Guard ──────────────────────────────────────────────
-        $public_views = array( 'login', 'register' );
+        $public_views = array( 'login', 'register', 'landing' );
         if ( ! is_user_logged_in() && ! in_array( $view, $public_views, true ) ) {
             // Redirect to login page
             $login_page_id = get_option( 'coachpro_page_login' );
@@ -62,16 +116,23 @@ class CoachPro_Shortcodes {
                 $redirect_to = home_url();
             }
             $login_url     = add_query_arg( 'redirect_to', $redirect_to, $login_url );
-            wp_redirect( $login_url );
-            exit;
+            // Cannot use wp_redirect() inside a shortcode — headers already sent.
+            // Return a JS-based redirect instead.
+            return sprintf(
+                '<script>window.location.href=%s;</script>',
+                wp_json_encode( $login_url )
+            );
         }
 
-        // ── Logged-in redirect for login/register ──────────────────
-        if ( is_user_logged_in() && in_array( $view, $public_views, true ) ) {
+        // ── Logged-in redirect for login/register only (landing remains public) ──
+        if ( is_user_logged_in() && in_array( $view, array( 'login', 'register' ), true ) ) {
             $dash_id  = get_option( 'coachpro_page_dashboard' );
             $dash_url = $dash_id ? get_permalink( $dash_id ) : home_url( '/dashboard' );
-            wp_redirect( $dash_url );
-            exit;
+            // Cannot use wp_redirect() inside a shortcode — headers already sent.
+            return sprintf(
+                '<script>window.location.href=%s;</script>',
+                wp_json_encode( $dash_url )
+            );
         }
 
         // ── Assets ─────────────────────────────────────────────────
@@ -99,9 +160,11 @@ class CoachPro_Shortcodes {
             'projectId'      => sanitize_text_field( $atts['project_id'] ),
             'supabaseUrl'    => null,
             'pluginUrl'      => COACHPRO_PLUGIN_URL,
+            'paymentDetails' => CoachPro_Payments_API::payment_details(),
             'googleClientId' => ! empty( get_option( 'coachpro_google_client_id', '' ) ),
             // Page URLs for JS navigation
             'pageUrls'       => array(
+                'landing'      => get_permalink( get_option('coachpro_page_landing') ) ?: home_url( '/' ),
                 'login'        => get_permalink( get_option('coachpro_page_login') ) ?: '',
                 'register'     => get_permalink( get_option('coachpro_page_register') ) ?: '',
                 'dashboard'    => get_permalink( get_option('coachpro_page_dashboard') ) ?: '',
@@ -121,7 +184,7 @@ class CoachPro_Shortcodes {
             '<div class="coachpro-app" data-view="%s" data-theme="%s" data-config=\'%s\' %s></div>',
             esc_attr( $view ),
             esc_attr( $atts['theme'] ),
-            $config,
+            esc_attr($config),
             $style
         );
     }

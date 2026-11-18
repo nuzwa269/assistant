@@ -1,6 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+if ( ! current_user_can( 'coachpro_admin' ) ) wp_die( 'Unauthorized' );
 ?>
 <div class="wrap">
     <h1><?php esc_html_e( 'CoachPro AI — Settings', 'coachpro-ai' ); ?></h1>
@@ -12,15 +12,9 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
 
         <h2><?php esc_html_e( 'AI Provider Keys', 'coachpro-ai' ); ?></h2>
         <p class="description">
-            <?php esc_html_e( 'Provider API keys and model assignments are now managed from the dedicated AI Providers page.', 'coachpro-ai' ); ?>
+            <?php esc_html_e( 'All API keys (OpenAI, Anthropic, Gemini and Custom/OpenRouter) are managed in one place on the AI Providers page.', 'coachpro-ai' ); ?>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=coachpro-ai-providers' ) ); ?>"><?php esc_html_e( 'Open AI Providers', 'coachpro-ai' ); ?></a>
         </p>
-        <table class="form-table">
-            <tr>
-                <th><label for="coachpro_openrouter_key"><?php esc_html_e( 'OpenRouter API Key', 'coachpro-ai' ); ?></label></th>
-                <td><input type="password" id="coachpro_openrouter_key" name="coachpro_openrouter_key" value="<?php echo esc_attr( get_option( 'coachpro_openrouter_key' ) ); ?>" class="regular-text" autocomplete="new-password" /></td>
-            </tr>
-        </table>
 
         <h2><?php esc_html_e( 'Google Sign-In (OAuth 2.0)', 'coachpro-ai' ); ?></h2>
         <p class="description">
@@ -47,12 +41,14 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
             <tr>
                 <th><label for="coachpro_google_client_secret"><?php esc_html_e( 'Google Client Secret', 'coachpro-ai' ); ?></label></th>
                 <td><input type="password" id="coachpro_google_client_secret" name="coachpro_google_client_secret"
-                           value="<?php echo esc_attr( get_option( 'coachpro_google_client_secret' ) ); ?>"
-                           class="regular-text" autocomplete="new-password" /></td>
+                           value="" class="regular-text" autocomplete="new-password"
+                           placeholder="<?php echo get_option( 'coachpro_google_client_secret' ) ? esc_attr__( 'Saved — leave empty to keep it', 'coachpro-ai' ) : ''; ?>" />
+                    <p class="description"><?php esc_html_e( 'The saved secret is never shown on this page. Type a new one only to replace it.', 'coachpro-ai' ); ?></p></td>
             </tr>
         </table>
 
-        <h2><?php esc_html_e( 'Payment Methods', 'coachpro-ai' ); ?></h2>
+        <h2><?php esc_html_e( 'Payment Details (shown to users)', 'coachpro-ai' ); ?></h2>
+        <p class="description"><?php esc_html_e( 'Users see these details on the Buy Credits page and pay you personally. After you receive a payment, add credits or assign a plan from CoachPro AI → Users. Leave a field empty to hide it.', 'coachpro-ai' ); ?></p>
         <table class="form-table">
             <tr>
                 <th><label for="coachpro_jazzcash_no"><?php esc_html_e( 'JazzCash Number', 'coachpro-ai' ); ?></label></th>
@@ -66,6 +62,14 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
                 <th><label for="coachpro_bank_details"><?php esc_html_e( 'Bank Account Details', 'coachpro-ai' ); ?></label></th>
                 <td><textarea id="coachpro_bank_details" name="coachpro_bank_details" class="large-text" rows="4"><?php echo esc_textarea( get_option( 'coachpro_bank_details' ) ); ?></textarea></td>
             </tr>
+            <tr>
+                <th><label for="coachpro_payment_contact"><?php esc_html_e( 'WhatsApp / contact for payment confirmation', 'coachpro-ai' ); ?></label></th>
+                <td><input type="text" id="coachpro_payment_contact" name="coachpro_payment_contact" value="<?php echo esc_attr( get_option( 'coachpro_payment_contact' ) ); ?>" class="regular-text" placeholder="0300-1234567" /></td>
+            </tr>
+            <tr>
+                <th><label for="coachpro_payment_instructions"><?php esc_html_e( 'Payment instructions', 'coachpro-ai' ); ?></label></th>
+                <td><textarea id="coachpro_payment_instructions" name="coachpro_payment_instructions" class="large-text" rows="4" placeholder="<?php esc_attr_e( 'e.g. After paying, send the screenshot and your registered email on WhatsApp. Credits are added within 24 hours.', 'coachpro-ai' ); ?>"><?php echo esc_textarea( get_option( 'coachpro_payment_instructions' ) ); ?></textarea></td>
+            </tr>
         </table>
 
         <h2><?php esc_html_e( 'General', 'coachpro-ai' ); ?></h2>
@@ -73,11 +77,14 @@ if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
             <tr>
                 <th><label for="coachpro_signup_bonus"><?php esc_html_e( 'Signup Bonus Credits', 'coachpro-ai' ); ?></label></th>
                 <td>
-                    <input type="number" id="coachpro_signup_bonus" name="coachpro_signup_bonus" value="<?php echo esc_attr( get_option( 'coachpro_signup_bonus', 20 ) ); ?>" class="small-text" min="0" />
-                    <p class="description"><?php esc_html_e( 'Credits given to each new user on registration.', 'coachpro-ai' ); ?></p>
+                    <input type="number" id="coachpro_signup_bonus" value="20" class="small-text" readonly aria-describedby="cp-signup-policy" />
+                    <p id="cp-signup-policy" class="description">Exactly 20 credits once per new user. No recurring Free allocation or payment-trial grants.</p>
                 </td>
             </tr>
         </table>
+
+        <h2>Data retention</h2>
+        <p><input type="hidden" name="coachpro_delete_data_on_uninstall" value="0"><label><input type="checkbox" name="coachpro_delete_data_on_uninstall" value="1" <?php checked(get_option('coachpro_delete_data_on_uninstall',0),1); ?>> Permanently delete CoachPro data, settings, and plugin-created pages when uninstalling. Leave unchecked to retain data.</label></p>
 
         <h2><?php esc_html_e( 'Page Assignments', 'coachpro-ai' ); ?></h2>
         <p class="description">

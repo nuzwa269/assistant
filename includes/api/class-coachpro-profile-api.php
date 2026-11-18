@@ -35,6 +35,22 @@ class CoachPro_Profile_API {
 
         $args = array( 'ID' => $user_id );
 
+        // Require current password verification before allowing sensitive field updates.
+        $user = get_userdata($user_id);
+        $changing_email = isset($params['email']) && $params['email'] !== $user->user_email;
+        if ($changing_email && ! is_email($params['email'])) return new WP_Error('invalid_email', 'Enter a valid email.', array('status'=>400));
+        $changing_sensitive = ! empty( $params['password'] ) || $changing_email;
+        if ( $changing_sensitive ) {
+            $current_password = $params['current_password'] ?? '';
+            if ( empty( $current_password ) ) {
+                return new WP_Error( 'current_password_required', __( 'Current password is required to change email or password.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            }
+            $user = get_user_by( 'id', $user_id );
+            if ( ! $user || ! wp_check_password( $current_password, $user->user_pass, $user_id ) ) {
+                return new WP_Error( 'wrong_current_password', __( 'Current password is incorrect.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            }
+        }
+
         if ( ! empty( $params['display_name'] ) ) {
             $args['display_name'] = sanitize_text_field( $params['display_name'] );
         }
@@ -42,7 +58,9 @@ class CoachPro_Profile_API {
             $args['user_email'] = sanitize_email( $params['email'] );
         }
         if ( ! empty( $params['password'] ) ) {
-            $args['user_pass'] = $params['password'];
+            $password_error = CoachPro_Auth::password_problem( (string) $params['password'] );
+            if ( $password_error ) return new WP_Error( 'weak_password', $password_error, array( 'status' => 400 ) );
+            $args['user_pass'] = (string) $params['password'];
         }
 
         $result = wp_update_user( $args );
@@ -51,25 +69,116 @@ class CoachPro_Profile_API {
             return $result;
         }
 
+        if (!empty($params['password'])) { wp_set_current_user($user_id); wp_set_auth_cookie($user_id, true); }
         return rest_ensure_response( CoachPro_Auth::user_data( $user_id ) );
+    }
+
+    // -------------------------------------------------------------------------
+    // Profile picture / logo
+    // -------------------------------------------------------------------------
+    /**
+     * Upload a profile picture or logo (JPG, PNG or WebP, max 2 MB).
+     * The image is re-encoded and cropped to 256×256, which strips any hidden
+     * content or metadata, and stored under uploads/coachpro-avatars/.
+     */
+    public static function upload_avatar( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        $files   = $request->get_file_params();
+        $file    = $files['avatar'] ?? null;
+        if ( ! $file || ! empty( $file['error'] ) || empty( $file['tmp_name'] ) ) {
+            return new WP_Error( 'missing_file', __( 'Choose an image to upload.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+        if ( (int) $file['size'] > 2 * MB_IN_BYTES ) {
+            return new WP_Error( 'file_too_large', __( 'The image must be smaller than 2 MB.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+        $mimes = array( 'jpg|jpeg|jpe' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp' );
+        $check = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'], $mimes );
+        $info  = @getimagesize( $file['tmp_name'] );
+        if ( empty( $check['type'] ) || ! $info || ! in_array( $info['mime'] ?? '', $mimes, true ) ) {
+            return new WP_Error( 'invalid_image', __( 'Upload a JPG, PNG or WebP image.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $editor = wp_get_image_editor( $file['tmp_name'] );
+        if ( is_wp_error( $editor ) ) {
+            return new WP_Error( 'invalid_image', __( 'This image could not be processed. Try another JPG or PNG.', 'coachpro-ai' ), array( 'status' => 400 ) );
+        }
+        $editor->resize( 256, 256, true );
+
+        $uploads = wp_upload_dir();
+        if ( ! empty( $uploads['error'] ) ) {
+            return new WP_Error( 'upload_failed', __( 'Uploads folder is not writable.', 'coachpro-ai' ), array( 'status' => 500 ) );
+        }
+        $dir = trailingslashit( $uploads['basedir'] ) . 'coachpro-avatars';
+        if ( ! wp_mkdir_p( $dir ) ) {
+            return new WP_Error( 'upload_failed', __( 'Uploads folder is not writable.', 'coachpro-ai' ), array( 'status' => 500 ) );
+        }
+        if ( ! file_exists( $dir . '/index.php' ) ) @file_put_contents( $dir . '/index.php', "<?php // Silence is golden.\n" );
+
+        // Random, unguessable file name; never the user's name or ID.
+        $name  = wp_generate_password( 24, false, false ) . '.png';
+        $saved = $editor->save( $dir . '/' . $name, 'image/png' );
+        if ( is_wp_error( $saved ) || empty( $saved['path'] ) ) {
+            return new WP_Error( 'upload_failed', __( 'The image could not be saved.', 'coachpro-ai' ), array( 'status' => 500 ) );
+        }
+
+        self::remove_avatar_file( $user_id );
+        update_user_meta( $user_id, 'coachpro_avatar', basename( $saved['path'] ) );
+        return rest_ensure_response( array( 'avatar_url' => self::avatar_url( $user_id ) ) );
+    }
+
+    public static function delete_avatar( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        self::remove_avatar_file( $user_id );
+        delete_user_meta( $user_id, 'coachpro_avatar' );
+        return rest_ensure_response( array( 'avatar_url' => '' ) );
+    }
+
+    /** Public URL of the user's own picture, or '' for the default person icon. */
+    public static function avatar_url( int $user_id ) : string {
+        $file = basename( (string) get_user_meta( $user_id, 'coachpro_avatar', true ) );
+        if ( '' === $file || ! preg_match( '/^[A-Za-z0-9]+\.png$/', $file ) ) return '';
+        $uploads = wp_upload_dir();
+        if ( ! file_exists( trailingslashit( $uploads['basedir'] ) . 'coachpro-avatars/' . $file ) ) return '';
+        return trailingslashit( $uploads['baseurl'] ) . 'coachpro-avatars/' . $file;
+    }
+
+    private static function remove_avatar_file( int $user_id ) : void {
+        $file = basename( (string) get_user_meta( $user_id, 'coachpro_avatar', true ) );
+        if ( '' === $file || ! preg_match( '/^[A-Za-z0-9]+\.png$/', $file ) ) return;
+        $uploads = wp_upload_dir();
+        $path = trailingslashit( $uploads['basedir'] ) . 'coachpro-avatars/' . $file;
+        if ( file_exists( $path ) ) wp_delete_file( $path );
     }
 
     // -------------------------------------------------------------------------
     // Transactions
     // -------------------------------------------------------------------------
     public static function get_transactions( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         $user_id = get_current_user_id();
-        $where   = current_user_can( 'manage_options' )
-            ? array()
-            : array( 'user_id' => $user_id );
-        $rows    = CoachPro_DB::get_rows( 'transactions', $where, 'created_at DESC', 50 );
-        return rest_ensure_response( $rows );
+        // Always filter by the authenticated user. Admins use /admin/* routes for global views.
+        $rows    = CoachPro_DB::get_rows( 'transactions', array( 'user_id' => $user_id ), 'created_at DESC', $limit, $offset );
+        // Users see only what was added or deducted; model and token details stay in the admin panel.
+        $clean = array();
+        foreach ( $rows as $row ) {
+            $clean[] = array(
+                'id'            => $row['id'],
+                'created_at'    => $row['created_at'],
+                'kind'          => $row['kind'],
+                'amount'        => $row['amount'],
+                'balance_after' => $row['balance_after'],
+                'notes'         => 'message_deduct' === $row['kind'] ? '' : (string) $row['notes'],
+            );
+        }
+        return rest_ensure_response( $clean );
     }
 
     // -------------------------------------------------------------------------
     // Saved Responses
     // -------------------------------------------------------------------------
     public static function get_saved_responses( WP_REST_Request $request ) {
+        list($limit, $offset) = CoachPro_DB::pagination($request);
         global $wpdb;
         $user_id = get_current_user_id();
 
@@ -77,26 +186,16 @@ class CoachPro_Profile_API {
         $t_saved = CoachPro_DB::table( 'saved_responses' );
         $t_msg   = CoachPro_DB::table( 'messages' );
 
-        if ( current_user_can( 'manage_options' ) ) {
-            $rows = $wpdb->get_results(
-                "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
-                 FROM `{$t_saved}` sr
-                 LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
-                 ORDER BY sr.created_at DESC
-                 LIMIT 100",
-                ARRAY_A
-            ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        } else {
-            $rows = $wpdb->get_results( $wpdb->prepare(
-                "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
-                 FROM `{$t_saved}` sr
-                 LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
-                 WHERE sr.user_id = %d
-                 ORDER BY sr.created_at DESC
-                 LIMIT 100",
-                $user_id
-            ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        }
+        // Always filter by the authenticated user. Admins use /admin/* routes for global views.
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT sr.*, m.content, m.role, m.model_id, m.created_at AS message_created_at
+             FROM `{$t_saved}` sr
+             LEFT JOIN `{$t_msg}` m ON m.id = sr.message_id
+             WHERE sr.user_id = %d
+             ORDER BY sr.created_at DESC
+             LIMIT %d OFFSET %d",
+            $user_id, $limit, $offset
+        ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
         return rest_ensure_response( $rows );
     }
@@ -106,7 +205,7 @@ class CoachPro_Profile_API {
         $params  = $request->get_json_params();
 
         if ( ! CoachPro_Credits::can_save_response( $user_id ) ) {
-            return new WP_Error( 'limit_reached', __( 'Free plan allows max 10 saved responses. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
+            return new WP_Error( 'limit_reached', __( 'Your plan limit has been reached. Please upgrade.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
         $message_id = sanitize_text_field( $params['message_id'] ?? '' );
@@ -122,15 +221,17 @@ class CoachPro_Profile_API {
             return new WP_Error( 'forbidden', __( 'Access denied.', 'coachpro-ai' ), array( 'status' => 403 ) );
         }
 
+        $conversation = CoachPro_DB::get_row('conversations', $message['conversation_id']);
+        if (!$conversation || (int)$conversation['user_id'] !== $user_id) return new WP_Error('forbidden','Access denied.',array('status'=>403));
         global $wpdb;
         $id = wp_generate_uuid4();
-        $result = $wpdb->insert(
+        $result = CoachPro_DB::insert(
             CoachPro_DB::table( 'saved_responses' ),
             array(
                 'id'         => $id,
                 'user_id'    => $user_id,
                 'message_id' => $message_id,
-                'project_id' => sanitize_text_field( $params['project_id'] ?? '' ) ?: null,
+                'project_id' => $conversation['project_id'],
                 'note'       => sanitize_textarea_field( $params['note'] ?? '' ),
             ),
             array( '%s', '%d', '%s', '%s', '%s' )
@@ -156,7 +257,7 @@ class CoachPro_Profile_API {
         }
 
         global $wpdb;
-        $wpdb->delete( CoachPro_DB::table( 'saved_responses' ), array( 'id' => $id ) );
+        CoachPro_DB::delete( CoachPro_DB::table( 'saved_responses' ), array( 'id' => $id ) );
         return rest_ensure_response( array( 'deleted' => true ) );
     }
 }

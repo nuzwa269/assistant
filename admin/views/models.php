@@ -1,10 +1,10 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+if ( ! current_user_can( 'coachpro_admin' ) ) wp_die( 'Unauthorized' );
 
 global $wpdb;
 $t      = CoachPro_DB::table( 'ai_models' );
-$models = $wpdb->get_results( "SELECT * FROM `{$t}` ORDER BY credits_cost ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$models = $wpdb->get_results( "SELECT * FROM `{$t}` ORDER BY output_credits_per_1k ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 ?>
 <div class="wrap">
     <h1><?php esc_html_e( 'CoachPro AI — AI Models', 'coachpro-ai' ); ?></h1>
@@ -18,7 +18,7 @@ $models = $wpdb->get_results( "SELECT * FROM `{$t}` ORDER BY credits_cost ASC", 
                 <th><?php esc_html_e( 'Provider', 'coachpro-ai' ); ?></th>
                 <th><?php esc_html_e( 'Type', 'coachpro-ai' ); ?></th>
                 <th><?php esc_html_e( 'Category', 'coachpro-ai' ); ?></th>
-                <th><?php esc_html_e( 'Credits/msg', 'coachpro-ai' ); ?></th>
+                <th><?php esc_html_e( 'Credits / 1K tokens (in / out)', 'coachpro-ai' ); ?></th>
                 <th><?php esc_html_e( 'Min Plan', 'coachpro-ai' ); ?></th>
                 <th><?php esc_html_e( 'Active', 'coachpro-ai' ); ?></th>
                 <th><?php esc_html_e( 'API Model Name', 'coachpro-ai' ); ?></th>
@@ -32,7 +32,7 @@ $models = $wpdb->get_results( "SELECT * FROM `{$t}` ORDER BY credits_cost ASC", 
                 <td><?php echo esc_html( $m['provider'] ); ?></td>
                 <td><?php echo esc_html( $m['provider_type'] ); ?></td>
                 <td><?php echo esc_html( $m['category'] ); ?></td>
-                <td><?php echo esc_html( $m['credits_cost'] ); ?></td>
+                <td><?php echo esc_html( (float) $m['input_credits_per_1k'] . ' / ' . (float) $m['output_credits_per_1k'] ); ?></td>
                 <td><?php echo esc_html( strtoupper( $m['min_plan'] ) ); ?></td>
                 <td><?php echo $m['is_active'] ? '✅' : '❌'; ?></td>
                 <td><code><?php echo esc_html( $m['api_model_name'] ); ?></code></td>

@@ -1,0 +1,32 @@
+{
+  "assets": [
+    {
+      "file": "noto-naskh-arabic-regular.woff2",
+      "bytes": 94032,
+      "sha256": "2a10d33e1f7129ab2b6ec76666e82ac5b509fbcfa7b4a3a1289bff42d2d64cd7"
+    },
+    {
+      "file": "poppins-regular.woff2",
+      "bytes": 7884,
+      "sha256": "7d93459d86585bfcdbb7e0376056226adb25821ee54b96236fe2123e9560929f"
+    },
+    {
+      "file": "poppins-latin-500-normal.woff2",
+      "bytes": 7740,
+      "sha256": "289e0afc8be731a86822349e54557296f145926496bd2138db1bac0db77f77a2"
+    },
+    {
+      "file": "poppins-latin-600-normal.woff2",
+      "bytes": 7992,
+      "sha256": "872e862918591a9e824dc03ed92f05729435ffbb8ebbb10eff7eda26592b1798"
+    }
+  ],
+  "naskhSource": "https://github.com/MeshalAlamr/muraqqam-challenge/blob/1b039cf991840ca5a8d31d170080c9aa51bec14d/page_header.html",
+  "poppins500600Source": "https://github.com/timharris707/skills/blob/fd4b6d1d012d8b1ca0db68c035162e10c455c053/design/run-board-v1x.html",
+  "method": "Extracted unchanged WOFF2 bytes from embedded base64 font data only; no application code or styles copied.",
+  "licenses": [
+    "Noto-Naskh-Arabic-OFL.txt",
+    "Poppins-OFL.txt"
+  ],
+  "fontIdentity": "Verified with Chrome CSS.getPlatformFontsForNode: Noto Naskh Arabic and Poppins; isCustomFont=true."
+}

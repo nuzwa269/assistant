@@ -1,0 +1,16 @@
+/* Public landing body copy only. Display type, navigation and motion are unchanged. */
+@font-face{font-family:'CoachPro Poppins';src:url('../fonts/poppins-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+.cpl{--copy-font:'CoachPro Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;--copy-leading:1.65;--copy-measure:65ch}
+.cpl :is(.cpl-hero-bottom>p,.cpl-hero-note p,.cpl-section-heading>p,.cpl-assistant-detail p,.cpl-story-items p,.cpl-step p,.cpl-demo-response p,.cpl-transparency>p,.cpl-closing-bottom p,.cpl-fine,.cpl-empty,.cpl-footer>p,.cpl-demo-foot,.cpl-demo-response-foot){font-family:var(--copy-font);font-weight:400;line-height:var(--copy-leading);letter-spacing:normal;font-style:normal}
+.cpl .cpl-hero-bottom>p{font-size:19px;max-inline-size:62ch}
+.cpl :is(.cpl-section-heading>p,.cpl-story-items p,.cpl-transparency>p,.cpl-closing-bottom p,.cpl-empty){font-size:18px;max-inline-size:var(--copy-measure)}
+.cpl :is(.cpl-assistant-detail p,.cpl-step p,.cpl-demo-response p){font-size:16px;max-inline-size:var(--copy-measure)}
+.cpl .cpl-hero-note p{font-size:15px}
+.cpl :is(.cpl-fine,.cpl-demo-foot,.cpl-demo-response-foot,.cpl-footer>p){font-size:14px}
+@media(max-width:600px){
+ .cpl .cpl-hero-bottom>p{font-size:16px}
+ .cpl :is(.cpl-section-heading>p,.cpl-story-items p,.cpl-transparency>p,.cpl-closing-bottom p,.cpl-empty){font-size:16px}
+ .cpl :is(.cpl-assistant-detail p,.cpl-step p,.cpl-demo-response p){font-size:16px}
+ .cpl .cpl-hero-note p{font-size:14px}
+ .cpl :is(.cpl-fine,.cpl-demo-foot,.cpl-demo-response-foot,.cpl-footer>p){font-size:13px}
+}
