@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: CoachPro AI Assistant
- * Plugin URI:  https://github.com/nuzwa269/coachpro-ai-assistant
+ * Plugin URI:  https://github.com/nuzwa269/assistant
  * Description: AI coaching with chat, projects, custom assistants, token-based credits, manual payments and a WordPress admin panel.
  * Version:     1.5.3
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Update URI: https://github.com/nuzwa269/coachpro-ai-assistant
+ * Update URI: https://github.com/nuzwa269/assistant
  * Author:      nuzwa269
  * Text Domain: coachpro-ai
  * Domain Path: /languages
